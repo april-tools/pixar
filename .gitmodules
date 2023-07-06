@@ -1,0 +1,6 @@
+[submodule "pixel"]
+	path = pixel
+	url = git@github.com:TYTTYTTYT/pixel.git
+[submodule "taming-transformers"]
+	path = taming-transformers
+	url = git@github.com:TYTTYTTYT/taming-transformers.git
