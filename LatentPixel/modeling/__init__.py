@@ -1,8 +1,12 @@
 from .pixels import LPixelForPreTraining
-from .config import Coder
+from .datatypes import (
+    Coder,
+    Graph
+)
 
 __all__ = [
     'LPixelForPreTraining'
     'Coder'
+    'Graph'
 ]
 
