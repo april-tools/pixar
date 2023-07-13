@@ -1,7 +1,8 @@
 from __future__ import annotations
+from typing import Any
+
 import os
 from os import PathLike
-from enum import Enum
 from math import sqrt
 
 import torch
@@ -9,35 +10,31 @@ from torchvision.transforms import PILToTensor, Compose, ToPILImage, Normalize
 
 import numpy as np
 
-from diffusers.models import AutoencoderKL
-
 import PIL
 from PIL.Image import Image
 
-from ..utils import (
+from .utils import (
     render_text,
     get_attention_mask,
     get_num_patches,
-    get_patch_size
+    get_patch_size,
+    unpatchify
 )
-from ..config import (
+from .config import (
     PIXEL_DEFAULT_IMAGE_STD,
     PIXEL_DEFAULT_IMAGE_MEAN
 )
 
-from pixel import Encoding
-
-
-class Coder(Enum):
-    SD = AutoencoderKL  # represents the VQGAN from Stable Diffusion
+from pixel import Encoding, PIXELForPreTrainingOutput
     
 
-class Graph:
+class TGraph:
     
     # The default image format, [n, c * h * w], varies in [0, 1]
     _value: torch.Tensor | None = None
     _patch_size: int | None = None
     _attention_mask: torch.Tensor | None = None
+    _mask: torch.Tensor | None = None
     num_text_patches: int | list[int] | None = None
 
     # useful transforms
@@ -51,18 +48,18 @@ class Graph:
         return self._pil2val(img) / 255
 
     @classmethod
-    def from_PIL(cls, img: Image | list[Image]) -> Graph:
-        graph = cls()
+    def from_PIL(cls, img: Image | list[Image]) -> TGraph:
+        TGraph = cls()
         if isinstance(img, list):
-            imgs = [graph._from_PIL(i).unsqueeze(0) for i in img]
-            graph._value = torch.cat(imgs, dim=0)
+            imgs = [TGraph._from_PIL(i).unsqueeze(0) for i in img]
+            TGraph._value = torch.cat(imgs, dim=0)
         else:
             print(type(img))
-            graph._value = graph._from_PIL(img)
-        return graph
+            TGraph._value = TGraph._from_PIL(img)
+        return TGraph
 
     def _to_PIL(self, value: torch.Tensor) -> Image:
-        return self._val2pil(value)
+        return self._val2pil(value.clamp(0, 1))
 
     def to_PIL(self) -> Image | list[Image]:
         if self._value.dim() == 3:
@@ -71,15 +68,15 @@ class Graph:
         return [self._to_PIL(img) for img in self._value]
     
     @classmethod
-    def from_numpy(cls, img: np.ndarray) -> Graph:
+    def from_numpy(cls, img: np.ndarray) -> TGraph:
         # H * W * C -> C * H * W
-        graph = cls()
+        TGraph = cls()
         timg = torch.tensor(img, dtype=torch.float)
         if timg.dim() == 3:
-            graph._value = timg.permute([2, 0, 1])
+            TGraph._value = timg.permute([2, 0, 1])
         elif timg.dim() == 4:
-            graph._value = timg.permute([0, 3, 1, 2])
-        return graph
+            TGraph._value = timg.permute([0, 3, 1, 2])
+        return TGraph
     
     def to_numpy(self) -> np.ndarray:
         # C * H * W -> H * W * C
@@ -90,30 +87,41 @@ class Graph:
     
     @classmethod
     def from_SD(cls, img: torch.Tensor, do_clip: bool = False) -> None:
-        graph = cls()
-        graph._value = (img / 2 + 0.5)
+        TGraph = cls()
+        TGraph._value = (img / 2 + 0.5)
         if do_clip:
-            graph._value = graph._value.clamp(0, 1)
+            TGraph._value = TGraph._value.clamp_(0, 1)
 
-        return graph
+        return TGraph
 
     def to_SD(self) -> torch.Tensor:
         return self._value * 2 - 1
     
+    def to_device(self, device: Any) -> TGraph:
+        self._value = self._value.to(device)
+        return self
+    
     @classmethod
-    def from_pixel(cls, img: torch.Tensor, do_clip: bool = False) -> None:
-        graph = cls()
-        graph._value = cls._inv_pix_normalizer(img)
+    def from_pixel_img(cls, img: torch.Tensor, do_clip: bool = False) -> None:
+        TGraph = cls()
+        TGraph._value = cls._inv_pix_normalizer(img)
         if do_clip:
-            graph._value = graph._value.clamp(0, 1)
+            TGraph._value = TGraph._value.clamp_(0, 1)
 
-        return graph
+        return TGraph
+    
+    @classmethod
+    def from_pixel(cls, output: PIXELForPreTrainingOutput, do_clamp: bool = False) -> TGraph:
+        TGraph = cls.from_pixel_logits(output.logits, do_clamp=do_clamp)
+        TGraph._attention_mask = output.attention_mask
+        TGraph._mask = output.mask
+        return TGraph
 
     def to_pixel(self) -> torch.Tensor:
         return self._pix_normalizer(self._value)
     
     @classmethod
-    def from_file(cls, path: str | PathLike) -> Graph:
+    def from_file(cls, path: str | PathLike) -> TGraph:
         image = PIL.Image.open(path, 'r')
         return cls.from_PIL(image)
     
@@ -132,28 +140,36 @@ class Graph:
             self._to_file(file_path, value)
 
     @classmethod
-    def from_text(cls, text: str | list[str]) -> Graph:
-        encods = render_text(text)
-        graph = cls()
+    def from_text(cls, text: str | list[str], **kwargs) -> TGraph:
+        encods = render_text(text, **kwargs)
+        TGraph = cls()
         if isinstance(encods, Encoding):
-            graph._value = torch.tensor(encods.pixel_values / 255, dtype=torch.float).permute(2, 0, 1)
-            graph.num_text_patches = encods.num_text_patches
-            return graph
+            TGraph._value = torch.tensor(encods.pixel_values / 255, dtype=torch.float).permute(2, 0, 1)
+            TGraph.num_text_patches = encods.num_text_patches
+            return TGraph
         
         imgs = [torch.tensor(encod.pixel_values / 255, dtype=torch.float).permute(2, 0, 1).unsqueeze(0) for encod in encods]
-        graph._value = torch.cat(imgs, dim=0).contiguous()
+        TGraph._value = torch.cat(imgs, dim=0).contiguous()
 
         nums = [encod.num_text_patches for encod in encods]
-        graph.num_text_patches = nums
+        TGraph.num_text_patches = nums
 
-        return graph
+        return TGraph
     
+    @classmethod
+    def from_pixel_logits(cls, logits: torch.Tensor, do_clamp: bool = False, patch_size: int = None) -> TGraph:
+        TGraph = cls()
+        TGraph._value = cls._inv_pix_normalizer(unpatchify(logits, patch_size))
+        if do_clamp:
+            TGraph._value = TGraph._value.clamp_(0, 1)
+        return TGraph.unsquarelize()
+
     @property
     def is_squre(self) -> bool:
         sp = self._value.shape
         return sp[-1] == sp[-2]
     
-    def squarelize(self) -> Graph:
+    def squarelize(self) -> TGraph:
         if self.is_squre:
             return self
         
@@ -164,7 +180,7 @@ class Graph:
 
         return self
     
-    def unsquarelize(self, patch_size: int | None = None) -> Graph:
+    def unsquarelize(self, patch_size: int | None = None) -> TGraph:
         if not self.is_squre:
             return self
         
@@ -177,7 +193,7 @@ class Graph:
         num_rows = self._value.shape[-2] // self._patch_size
         rows = torch.tensor_split(self._value, num_rows, dim=-2)
         self._value = torch.cat(rows, dim=-1)
-
+    
         return self
     
     def get_attention_mask(self) -> torch.Tensor:
@@ -191,4 +207,27 @@ class Graph:
         masks = [get_attention_mask(num, get_num_patches()).unsqueeze(0) for num in self.num_text_patches]
         self._attention_mask = torch.cat(masks, dim=0)
         return self._attention_mask
+    
+    @classmethod
+    def reconstruct(cls, origin: TGraph, generated: TGraph, do_clamp: bool = False) -> TGraph:
+        recon = cls()
+        origin.squarelize()
+        generated.squarelize()
+        attn_mask = generated._attention_mask.unsqueeze(0) if generated._attention_mask.dim() == 3 else generated._attention_mask
+        print(attn_mask.shape)
+        attn_mask = attn_mask.unsqueeze(-1).repeat(1, 1, get_patch_size() ** 2 * 3)
+        attn_mask = unpatchify(attn_mask)
+
+        mask = generated._mask.unsqueeze(0) if generated._mask.dim() == 3 else generated._mask
+        mask = mask.unsqueeze(-1).repeat(1, 1, get_patch_size() ** 2 * 3)
+        mask = unpatchify(mask)
+
+        pred_mask = mask * attn_mask == 1
+
+        recon._value = (
+            origin._value * (~pred_mask).int() + generated._value * pred_mask.int()
+        )
+        if do_clamp:
+            recon._value = recon._value.clamp_(0, 1)
+        return recon
     
