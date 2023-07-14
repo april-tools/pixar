@@ -16,7 +16,7 @@ def dataloader_init_fn(worker_id, seed: int, render_config: dict) -> None:
     torch.manual_seed(seed)
     random.seed(seed)
     np.random.seed(0)
-    os.system("taskset -p 0xfffffff %d" % os.getpid())
+    os.system("taskset -p 0xffffffffff %d" % os.getpid())
     from ..utils import render_fn, init_render
     if render_fn is None:
         init_render(**render_config)
@@ -61,7 +61,7 @@ def enwiki_map(batch, min_len: int):
 
     return {'text': collated}
 
-def get_pretrain_dataloader(
+def get_pixel_pretrain_dataloader(
         paths: list[str | os.PathLike],
         batch_size: int, 
         num_workers: int, 
@@ -73,6 +73,7 @@ def get_pretrain_dataloader(
         streaming: bool = True,
         rank: int = None, 
         world_size: int = None,
+        pin_memory: bool = False,
         pin_memory_device: str = 'cuda'
         ) -> DataLoader:
     paths.sort()
@@ -114,7 +115,7 @@ def get_pretrain_dataloader(
         batch_size=batch_size,
         num_workers=num_workers,
         prefetch_factor=4,
-        pin_memory=True,
+        pin_memory=pin_memory,
         pin_memory_device=rank if rank is not None else pin_memory_device,
         collate_fn=partial(render_batched_text, model_type=model_type),
         worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),

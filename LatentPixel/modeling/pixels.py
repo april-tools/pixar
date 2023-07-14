@@ -24,11 +24,12 @@ class LPixelForPreTraining(nn.Module):
     def __init__(
         self, 
         coder_type: ModelType, 
-        pixel_path: str | PathLike, 
-        coder_path: str | PathLike, 
         mask_ratio: float,
         image_size: tuple[int, int],
         patch_size: int,
+        pixel_path: str | PathLike = '', 
+        coder_path: str | PathLike = '', 
+        ckpt_path: str | PathLike = '',
         keep_decoder: bool = False
         ):
         super().__init__()
@@ -36,10 +37,16 @@ class LPixelForPreTraining(nn.Module):
         self.coder_type = coder_type
         self.pixel_path = pixel_path
         self.coder_path = coder_path
+        self.ckpt_path = ckpt_path
         self.mask_ratio = mask_ratio
         self.image_size = image_size
         self.patch_size = patch_size
-        
+
+        if len(self.pixel_path) == 0:
+            self.pixel_path = os.path.join([self.ckpt_path, 'pixel'])
+        if len(self.coder_path) == 0:
+            self.coder_path = os.path.join([self.ckpt_path, 'coder'])
+                
         # load the coder
         self.coder: AutoencoderKL = coder_type.value.from_pretrained(coder_path)
         self.coder_config: dict = self.coder.config

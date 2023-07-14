@@ -1,5 +1,5 @@
-from .dataloaders import get_pretrain_dataloader
+from .dataloaders import get_pixel_pretrain_dataloader
 
 __all__ = [
-    'get_pretrain_dataloader'
+    'get_pixel_pretrain_dataloader'
 ]

@@ -13,7 +13,7 @@ from .text_graph import (
     TGraph
 )
 from .dataprocess import (
-    get_pretrain_dataloader
+    get_pixel_pretrain_dataloader
 )
 
 __all__ = [
@@ -23,5 +23,5 @@ __all__ = [
     'init_render'
     'init_timestamp'
     'timestamp'
-    'get_pretrain_dataloader'
+    'get_pixel_pretrain_dataloader'
 ]

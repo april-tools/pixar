@@ -55,6 +55,7 @@ def _clean_up() -> None:
 def set_render(render_to_set: Any) -> None:
     global render
     render = render_to_set
+
 {
   "background_color": "white",
   "dpi": 120,
@@ -73,7 +74,7 @@ def init_render(
         font_size: int = 8,
         pixels_per_patch: int = 16,
         pad_size: int = 3,
-        num_worker: int = 1
+        num_worker: int = 1,
         ) -> PangoCairoTextRenderer:
     global render, render_config, _render_processes, render_fn
     with open(os.path.join(path, 'text_renderer_config.json'), 'r') as fin:
