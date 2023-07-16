@@ -7,7 +7,8 @@ from .utils import (
     timestamp
 )
 from .config import (
-    ModelType
+    ModelType,
+    RenderConfig
 )
 from .text_graph import (
     TGraph
@@ -24,4 +25,5 @@ __all__ = [
     'init_timestamp'
     'timestamp'
     'get_pixel_pretrain_dataloader'
+    'RenderConfig'
 ]

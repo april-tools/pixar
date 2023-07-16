@@ -47,8 +47,10 @@ class LatentModel(nn.Module):
                 param.requires_grad = False
             for param in self.get_connection_params():
                 param.requires_grad = True
-        else:
-            raise NotImplementedError('All child module should define this function within it')
+        elif stage == 2:
+            print(f"Set gradient config for stage {stage}")
+            for param in self.coder.parameters():
+                param.requires_grad = False
 
     
     # @property

@@ -153,7 +153,6 @@ def save_exp(model: LatentModel, config: ExpConfig, name: str) -> None:
         model.save_backbone(config.backbone_ckpt_path(name))
         model.save_coder(config.coder_ckpt_path(name))
         config.save(name)
-    dist_sync(config)
 
 @timeit
 def train(config: ExpConfig):
@@ -181,7 +180,7 @@ def train(config: ExpConfig):
             train_gacc_stack(stack, config, model.pixel)
             for _ in range(config.num_grad_acc_step - 1):
                 graph: TGraph = next(train_loader)
-                batch = graph.to_pixel().to(config.device_id)
+                batch = graph.to_SD().to(config.device_id)
                 attention_mask = graph.get_attention_mask().to(config.device_id)
                 loss = model(pixel_values=batch, attention_mask=attention_mask, coder_grad=False).loss / config.num_grad_acc_step
                 backward(loss, optim_parts)
@@ -192,7 +191,7 @@ def train(config: ExpConfig):
             train_stack(stack, config, model.pixel)
 
             graph: TGraph = next(train_loader)
-            batch = graph.to_pixel().to(config.device_id)
+            batch = graph.to_SD().to(config.device_id)
             attention_mask = graph.get_attention_mask().to(config.device_id)
             loss = model(pixel_values=batch, attention_mask=attention_mask, coder_grad=False).loss / config.num_grad_acc_step
             backward(loss, optim_parts)
@@ -210,10 +209,14 @@ def train(config: ExpConfig):
             if config.current_step - last_best_loss_step >= config.best_save_freq:
                 save_exp(model, config, 'best_train_loss')
                 last_best_loss_step = config.current_step
+        dist_sync(config)
 
         if config.current_step % config.save_freq == 0:
             save_exp(model, config, str(config.current_step))
 
+        dist_sync(config)
+
         config.current_step += 1
 
     save_exp(model, config, 'last')
+    dist_sync(config)
