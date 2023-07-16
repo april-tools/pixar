@@ -70,7 +70,7 @@ def get_pixel_pretrain_dataloader(
         model_type: ModelType,
         render_config: RenderConfig = None,
         n_skip: int = 0,
-        min_len: int = 200,
+        min_len: int = 400,
         streaming: bool = True,
         rank: int = None, 
         world_size: int = None,
