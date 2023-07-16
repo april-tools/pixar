@@ -54,6 +54,7 @@ class ExpConfig:
     max_token: int = 512    # 1024 for gpt2, 2048 for llama 7b
     eval_freq: int = 100
     save_freq: int = 1000
+    best_save_freq: int = 100
     test_gpu_usibility: bool = False
     dpi: int = 120
     font_size: int = 8
@@ -100,13 +101,13 @@ class ExpConfig:
     _world_size: int = -1
     _device_id: int = -1
     _local_world_size: int = -1
-    _render_config: RenderConfig = None
+    _render_config: dict = None
 
     @property
     def render_config(self) -> RenderConfig:
         if self._render_config is not None:
-            return self._render_config
-        self._render_config = RenderConfig(
+            return RenderConfig(**self._render_config)
+        rconf = RenderConfig(
             path=self.render_path,
             dpi=self.dpi,
             font_size=self.font_size,
@@ -114,7 +115,8 @@ class ExpConfig:
             pad_size=self.pad_size,
             font_file=self.font_file,
         )
-        return self._render_config
+        self._render_config = rconf.to_dict()
+        return rconf
 
     @property
     def latent_size(self) -> tuple[int, int]:
@@ -249,6 +251,18 @@ class ExpConfig:
         )
         if not exists(path):
             makedirs(path, exist_ok=False)
+        return path
+    
+    def backbone_ckpt_path(self, name: str) -> str | PathLike:
+        path = join(self.model_path(name), 'backbone')
+        if not exists(path):
+            makedirs(path, exist_ok=True)
+        return path
+    
+    def coder_ckpt_path(self, name: str) -> str | PathLike:
+        path = join(self.model_path(name), 'coder')
+        if not exists(path):
+            makedirs(path, exist_ok=True)
         return path
 
     def optim_path(self, name: str) -> str | PathLike:

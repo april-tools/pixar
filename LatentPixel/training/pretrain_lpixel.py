@@ -1,5 +1,6 @@
 import os
 from contextlib import ExitStack
+from functools import partial
 
 import torch
 from torch.optim import(
@@ -61,43 +62,53 @@ def init_exp(config: ExpConfig) -> tuple[LatentModel, DataLoader, DataLoader, di
             )
         case _:
             raise NotImplementedError(f'Unrecognizable model type {config.model}')
+        
+    model.set_grad_for_stage(config.stage)
     
     if config.gradient_checkpointing:
-        print('Enable gradient checkpointing')
+        output('Enable gradient checkpointing')
         model.gradient_checkpointing_enable()
 
     if config.half_coder:
-        print('Half the coder')
+        output('Half the coder')
         model.coder.half()
-
-    model = wrap_model(model, config)
+        if not config.on_cpu:
+            model.coder.to(config.device_id)
 
     # init optimizer
     match config.optim.lower():
         case 'adamw':
+            if config.stage == 1:
+                output('Load connection parameters to the AdamW optimizer.')
+            else:
+                output('Load backbone parameters to the AdamW optimizer.')
             optim = AdamW(
-                params=model.parameters() if config.stage == 1 else None,
+                params=model.get_connection_layers().parameters() if config.stage == 1 else model.get_backbone_parameters(),
                 lr=config.lr,
                 betas=(config.beta1, config.beta2),
                 weight_decay=config.decay,
             )
         case 'sgd':
+            if config.stage == 1:
+                output('Load connection parameters to the SGD optimizer.')
+            else:
+                output('Load backbone parameters to the SGD optimizer.')
             optim = SGD(
-                params=model.parameters() if config.stage == 1 else None,
+                params=model.get_connection_layers().parameters() if config.stage == 1 else model.get_backbone_parameters(),
                 lr=config.lr,
                 momentum=config.momentum
             )
         case _:
             raise KeyError(f'Invalid optim type {config.optim}')
-        
+
+    model.pixel = wrap_model(model.pixel, config)
         
     # init scheduler
     if config.scheduler.lower() == 'cosineannealinglr':
         scheduler = CosineAnnealingLR(
             optimizer=optim,
             T_max=config.total_steps,
-            eta_min=0.1 * config.lr, # from llama paper
-            verbose=True
+            eta_min=0.1 * config.lr # from llama paper
         )
     else:
         raise KeyError(f'Invalid scheduler type {config.scheduler}')
@@ -122,7 +133,7 @@ def init_exp(config: ExpConfig) -> tuple[LatentModel, DataLoader, DataLoader, di
         
     scaler = None
     if config.mix_precision == 'fp16':
-        scaler = ShardedGradScaler()
+        scaler = ShardedGradScaler()    # This works for both DDP and FSDP
         
     optim_parts = {
         'optim': optim,
@@ -134,6 +145,15 @@ def init_exp(config: ExpConfig) -> tuple[LatentModel, DataLoader, DataLoader, di
     init_render(config.render_config)
 
     return (model, train_loader, dev_loader, optim_parts)
+
+@timeit
+def save_exp(model: LatentModel, config: ExpConfig, name: str) -> None:
+    output(f'Saving the {name} model at step {config.current_step}')
+    if config.rank == 0:
+        model.save_backbone(config.backbone_ckpt_path(name))
+        model.save_coder(config.coder_ckpt_path(name))
+        config.save(name)
+    dist_sync(config)
 
 @timeit
 def train(config: ExpConfig):
@@ -153,9 +173,12 @@ def train(config: ExpConfig):
     while config.current_step <= config.total_steps:
         output(f'Step: {config.current_step}')
         running_loss: float = 0.0
-        model.train()
+        last_best_loss_step: int = -1
+
+        model.pixel.train()
+        model.coder.eval()
         with ExitStack() as stack:
-            train_gacc_stack(stack, config, model)
+            train_gacc_stack(stack, config, model.pixel)
             for _ in range(config.num_grad_acc_step - 1):
                 graph: TGraph = next(train_loader)
                 batch = graph.to_pixel().to(config.device_id)
@@ -166,7 +189,7 @@ def train(config: ExpConfig):
                 running_loss += loss.item()
 
         with ExitStack() as stack:
-            train_stack(stack, config, model)
+            train_stack(stack, config, model.pixel)
 
             graph: TGraph = next(train_loader)
             batch = graph.to_pixel().to(config.device_id)
@@ -176,8 +199,21 @@ def train(config: ExpConfig):
 
             running_loss += loss.item()
 
-        step(config, optim_parts, model)
+        step(config, optim_parts, model.pixel)
         running_loss = distributed_average(running_loss, config.device_id)
         output(f'Loss: {running_loss}')
         log({'training loss': running_loss})
+        dist_sync(config)
+
+        if running_loss < config.best_loss:
+            config.best_loss = running_loss
+            if config.current_step - last_best_loss_step >= config.best_save_freq:
+                save_exp(model, config, 'best_train_loss')
+                last_best_loss_step = config.current_step
+
+        if config.current_step % config.save_freq == 0:
+            save_exp(model, config, str(config.current_step))
+
         config.current_step += 1
+
+    save_exp(model, config, 'last')

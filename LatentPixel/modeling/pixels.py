@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable, Iterator
 import os
 from os import PathLike
 
@@ -42,6 +42,7 @@ class LPixelForPreTraining(LatentModel):
         self.mask_ratio = mask_ratio
         self.image_size = image_size
         self.patch_size = patch_size
+        self.keep_decoder = keep_decoder
 
         if len(self.pixel_path) == 0:
             self.pixel_path = os.path.join([self.ckpt_path, 'pixel'])
@@ -67,12 +68,6 @@ class LPixelForPreTraining(LatentModel):
         self.pixel_config.num_channels = self.latent_channels
         self.pixel: PIXELForPreTraining = PIXELForPreTraining.from_pretrained(pixel_path, config=self.pixel_config, ignore_mismatched_sizes=True)
         self.pixel.vit.embeddings = PIXELEmbeddings(self.pixel_config)
-
-        # set the connection layers
-        self.connection_layers = nn.ModuleList([
-            self.pixel.vit.embeddings,
-            self.pixel.decoder.decoder_pred
-        ])
 
     def load_coder(self, path: str | os.PathLike, config: Any = None) -> nn.Module:
         # load the coder
@@ -130,9 +125,30 @@ class LPixelForPreTraining(LatentModel):
 
         return result
     
-    def get_connection_layers(self) -> nn.ModuleList:
-        return self.connection_layers
+    def get_connection_layers(self) -> nn.Module:
+        return nn.ModuleList([
+            self.pixel.vit.embeddings,
+            self.pixel.decoder.decoder_pred
+        ])
     
+    def get_backbone_parameters(self) -> Any:
+        return self.pixel.parameters()
+    
+    def get_connection_params(self) -> Iterator[nn.Parameter]:
+        return self.get_connection_layers().parameters()
+    
+    def save_backbone(self, path: str | PathLike) -> None:
+        if isinstance(self.pixel, PIXELForPreTraining):
+            self.pixel.save_pretrained(path)
+        else:
+            self.pixel.module.save_pretrained(path)
+
+    def save_coder(self, path: str | PathLike) -> None:
+        if self.keep_decoder:
+            self.coder.save_pretrained(path)
+        else:
+            print('Abandon the coder saving since the decoder is deleted.')
+
     def save_model(self, path: str | PathLike, only_backbone: bool = False) -> None:
         pixel_path = os.path.join(path, 'pixel')
         coder_path = os.path.join(path, 'coder')
@@ -143,3 +159,13 @@ class LPixelForPreTraining(LatentModel):
 
     def compile(self) -> None:
         self.pixel = torch.compile(self.pixel, mode='max-autotune', dynamic=False)
+
+    def wrap(self, wrap_fn: Callable[..., Any]) -> None:
+        self.pixel.vit.embeddings = wrap_fn(self.pixel.vit.embeddings)
+        self.pixel.vit.encoder = wrap_fn(self.pixel.vit.encoder)
+        self.pixel.vit.layernorm = wrap_fn(self.pixel.vit.layernorm)
+        self.pixel.decoder.decoder_embed = wrap_fn(self.pixel.decoder.decoder_embed)
+        self.pixel.decoder.wrapped = wrap_fn(self.pixel.decoder.wrapped)
+        self.pixel.decoder.decoder_layers = wrap_fn(self.pixel.decoder.decoder_layers)
+        self.pixel.decoder.decoder_norm = wrap_fn(self.pixel.decoder.decoder_norm)
+        self.pixel.decoder.decoder_pred = wrap_fn(self.pixel.decoder.decoder_pred)
