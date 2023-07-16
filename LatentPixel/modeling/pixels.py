@@ -1,6 +1,6 @@
+from typing import Any
 import os
 from os import PathLike
-from dataclasses import dataclass
 
 import torch
 from torch import nn
@@ -15,11 +15,12 @@ from transformers.utils import logging
 
 from ..text_graph import TGraph
 from ..config import ModelType
+from .latent_model import LatentModel
 
 logger = logging.get_logger(__name__)
 
 
-class LPixelForPreTraining(nn.Module):
+class LPixelForPreTraining(LatentModel):
     
     def __init__(
         self, 
@@ -48,12 +49,15 @@ class LPixelForPreTraining(nn.Module):
             self.coder_path = os.path.join([self.ckpt_path, 'coder'])
                 
         # load the coder
-        self.coder: AutoencoderKL = coder_type.value.from_pretrained(coder_path)
-        self.coder_config: dict = self.coder.config
-        self.latent_channels: int = self.coder_config['latent_channels']
+        self.load_coder(coder_path)
         if not keep_decoder:
+            print('unload the decoder')
             del self.coder.decoder
             self.coder.decoder = None
+            del self.coder.post_quant_conv
+            self.coder.post_quant_conv = None
+
+        self.load_backbone(pixel_path)
 
         # load the pixel
         self.pixel_config: PIXELConfig = PIXELConfig.from_pretrained(pixel_path)
@@ -69,7 +73,24 @@ class LPixelForPreTraining(nn.Module):
             self.pixel.vit.embeddings,
             self.pixel.decoder.decoder_pred
         ])
-        
+
+    def load_coder(self, path: str | os.PathLike, config: Any = None) -> nn.Module:
+        # load the coder
+        self.coder: AutoencoderKL = AutoencoderKL.from_pretrained(path)
+        self.coder_config: dict = self.coder.config
+        self.latent_channels: int = self.coder_config['latent_channels']
+        return self.coder
+    
+    def load_backbone(self, path: str | PathLike, config: Any = None) -> nn.Module:
+        self.pixel_config: PIXELConfig = PIXELConfig.from_pretrained(path)
+        self.pixel_config.mask_ratio = self.mask_ratio
+        self.pixel_config.image_size = self.image_size
+        self.pixel_config.patch_size = self.patch_size
+        self.pixel_config.num_channels = self.latent_channels
+        self.pixel: PIXELForPreTraining = PIXELForPreTraining.from_pretrained(path, config=self.pixel_config, ignore_mismatched_sizes=True)
+        self.pixel.vit.embeddings = PIXELEmbeddings(self.pixel_config)
+        return self.pixel
+
     def forward(
         self,
         pixel_values: torch.Tensor,
@@ -112,10 +133,13 @@ class LPixelForPreTraining(nn.Module):
     def get_connection_layers(self) -> nn.ModuleList:
         return self.connection_layers
     
-    def save_model(self, path: str | PathLike, only_pixel: bool = False) -> None:
+    def save_model(self, path: str | PathLike, only_backbone: bool = False) -> None:
         pixel_path = os.path.join(path, 'pixel')
         coder_path = os.path.join(path, 'coder')
         self.pixel.save_pretrained(pixel_path)
         
-        if not only_pixel:
+        if not only_backbone:
             self.coder.save_pretrained(coder_path)
+
+    def compile(self) -> None:
+        self.pixel = torch.compile(self.pixel, mode='max-autotune', dynamic=False)

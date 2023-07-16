@@ -1,15 +1,20 @@
-from typing import Any
+from typing import Any, Callable
 import os
 from os import PathLike
 import atexit
 from time import strftime
 import json
+import random
+import time
 
 import torch
 import torch.multiprocessing as mp
+import numpy as np
 
 from pixel import PangoCairoTextRenderer
 from pixel import Encoding
+
+from .config import RenderConfig
 
 render: PangoCairoTextRenderer = None
 render_config = dict()
@@ -18,6 +23,11 @@ _txt_queue = mp.Queue()
 _img_queue = mp.Queue()
 _timestamp: str = None
 render_fn = None
+
+def seed_everyting(seed: int) -> None:
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
 
 def _stand_alone_render(text: str | list[str]) -> Encoding | list[Encoding]:
     if isinstance(text, str):
@@ -69,23 +79,19 @@ def set_render(render_to_set: Any) -> None:
 }
 
 def init_render(
-        path: str | PathLike, 
-        dpi: int = 120, 
-        font_size: int = 8,
-        pixels_per_patch: int = 16,
-        pad_size: int = 3,
+        config: RenderConfig,
         num_worker: int = 1,
         ) -> PangoCairoTextRenderer:
     global render, render_config, _render_processes, render_fn
-    with open(os.path.join(path, 'text_renderer_config.json'), 'r') as fin:
+    with open(os.path.join(config.path, 'text_renderer_config.json'), 'r') as fin:
         render_config = json.load(fin)
 
-    render_config['dpi'] = dpi
-    render_config['font_size'] = font_size
-    render_config['pixels_per_patch'] = pixels_per_patch
-    render_config['font_file'] = os.path.join(path, 'GoNotoCurrent.ttf')
-    render_config['pad_size'] = pad_size
-    render_config['rgb'] = True
+    render_config['dpi'] = config.dpi
+    render_config['font_size'] = config.font_size
+    render_config['pixels_per_patch'] = config.pixels_per_patch
+    render_config['font_file'] = os.path.join(config.path, config.font_file)
+    render_config['pad_size'] = config.pad_size
+    render_config['rgb'] = config.rgb
 
     render = PangoCairoTextRenderer(**render_config)
 
@@ -172,5 +178,14 @@ def unpatchify(x: torch.Tensor, p: int = None) -> torch.Tensor:
     x = torch.einsum("nhwpqc->nchpwq", x)
     imgs = x.reshape(shape=(x.shape[0], 3, h * p, h * p))
     return imgs
+
+def timeit(fn: Callable) -> Callable:
+    def inner_fn(*args, **kwargs) -> Any:
+        tic = time.time()
+        result = fn(*args, **kwargs)
+        seconds = time.time() - tic
+        print(f'{str(fn)} used {seconds} seconds.')
+        return result
+    return inner_fn
 
 atexit.register(_clean_up)

@@ -5,21 +5,21 @@ import random
 import torch
 from torch.utils.data import DataLoader
 from ..text_graph import TGraph
-from ..config import ModelType
+from ..config import ModelType, RenderConfig
+from ..utils import seed_everyting, timeit
 from tqdm import tqdm
 import numpy as np
 
 from datasets import load_dataset, interleave_datasets, load_from_disk
 from datasets.distributed import split_dataset_by_node
 
-def dataloader_init_fn(worker_id, seed: int, render_config: dict) -> None:
-    torch.manual_seed(seed)
-    random.seed(seed)
-    np.random.seed(0)
+def dataloader_init_fn(worker_id, seed: int, render_config: RenderConfig) -> None:
+    seed_everyting(seed)
     os.system("taskset -p 0xffffffffff %d" % os.getpid())
-    from ..utils import render_fn, init_render
-    if render_fn is None:
-        init_render(**render_config)
+    from ..utils import render, init_render
+    if render is None:
+        print(f'initialize the render with parameters {render_config.to_dict()}')
+        init_render(render_config)
 
 def render_batched_text(batch: list[dict[str, str]], model_type: ModelType) -> torch.Tensor:
     sents = []
@@ -61,13 +61,14 @@ def enwiki_map(batch, min_len: int):
 
     return {'text': collated}
 
+@timeit
 def get_pixel_pretrain_dataloader(
         paths: list[str | os.PathLike],
         batch_size: int, 
         num_workers: int, 
         seed: int,
         model_type: ModelType,
-        render_config: dict = None,
+        render_config: RenderConfig = None,
         n_skip: int = 0,
         min_len: int = 200,
         streaming: bool = True,
@@ -115,8 +116,6 @@ def get_pixel_pretrain_dataloader(
         batch_size=batch_size,
         num_workers=num_workers,
         prefetch_factor=4,
-        pin_memory=pin_memory,
-        pin_memory_device=rank if rank is not None else pin_memory_device,
         collate_fn=partial(render_batched_text, model_type=model_type),
         worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
         drop_last=True

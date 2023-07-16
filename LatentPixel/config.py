@@ -1,7 +1,7 @@
 import os
 from os import PathLike
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 import torch
 from diffusers.models import AutoencoderKL
@@ -16,4 +16,15 @@ class ModelType(Enum):
     SD = AutoencoderKL  # represents the VQGAN from Stable Diffusion
     PIXEL = PIXELForPreTraining
 
+@dataclass
+class RenderConfig:
+    dpi: int = 120
+    font_size: int = 8
+    pixels_per_patch: int = 16
+    pad_size: int = 3
+    font_file: str = 'GoNotoCurrent.ttf'
+    path: str = 'storage/pixel-base'
+    rgb = True
 
+    def to_dict(self) -> dict:
+        return asdict(self)

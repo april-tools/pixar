@@ -6,8 +6,10 @@ from time import strftime
 import argparse
 from typing import Any, TypeVar
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
+
+from ..config import RenderConfig
 
 import wandb
 
@@ -30,19 +32,24 @@ class ExpConfig:
     coder_path: str | PathLike = ''
     render_path: str | PathLike = RENDER_PATH
     checkpoint_path: str | PathLike = CHECK_PATH
-    dataset_paths: list[str | PathLike] = ['']
+    dataset_paths: list[str | PathLike] = field(default_factory=list) 
     seed: int = SEED
-    exp_type: str = 'pretrain'
-    task: str = 'c4'
-    method: int = 2
+    exp_type: str = 'debug'
+    task: str = 'lpixel_pretrain'
+    stage: int = 1
     optim: str = 'AdamW'
     scheduler: str = 'CosineAnnealingLR'
     batch_size: int = 256   # The real batch_size, it should be equal to num_gpu * sub_size * num_gradient_acc_steps
     sub_size: int = 128     # actual batch size for 1 gradient acc step on 1 gpu
     eval_batch_size: int = 256
     eval_num_batch: int = 12
-    max_dev_thinking: int = 5   # maximum thinking length the model can output during evaluation
     lr: float = 1e-5
+    beta1: float = 0.9
+    beta2: float = 0.95
+    decay: float = 0.1
+    momentum: float = 0.95
+    clip: float = 1.0
+    mask_ratio: float = 0.25
     total_steps: int = 4000 # number of parameter update steps
     max_token: int = 512    # 1024 for gpt2, 2048 for llama 7b
     eval_freq: int = 100
@@ -52,15 +59,18 @@ class ExpConfig:
     font_size: int = 8
     pad_size: int = 3
     pixels_per_patch: int = 16
+    compress_ratio: int = 8
+    font_file: str = 'GoNotoCurrent.ttf'
     
     torch_compile: bool = False # whether to compile the model into a static graph (refer to pytorch 2.0)
     dynamic_shape: bool = False # whether to use dynamic input shape while compiling
     mix_precision: str = 'no'   # mixed precision could be bf16, fp16 or no
     half_precision: bool = False    # train in pure fp16 precision
+    half_coder: bool = False
     gradient_checkpointing: bool = False    # save memory but reduce more computation
 
-    num_node: int = 1   # now only support 1 node
-    num_gpu_per_node: int = 1    # number of gpu to use. If > 1, apply distributed dataparallel
+    num_gpu_per_node: int = 1
+    num_node: int = 2
     mp_workers: int = 4 # number of paraller tokenizer workers per gpu
 
     shard_strategy: str = 'no'    # sharding strategy, grad or full or no
@@ -72,7 +82,6 @@ class ExpConfig:
     num_trained_tokens: int = 0
     shuffle_dataset: bool = False
     init: bool = False
-    data_paths: str = ''
     no_ckpt: bool = False
     no_log: bool = False
     
@@ -87,6 +96,75 @@ class ExpConfig:
     _epoch: int = 1
     _num_grad_acc_step: int = -1
     _num_gpu: int = -1
+    _rank: int = -1
+    _world_size: int = -1
+    _device_id: int = -1
+    _local_world_size: int = -1
+    _render_config: RenderConfig = None
+
+    @property
+    def render_config(self) -> RenderConfig:
+        if self._render_config is not None:
+            return self._render_config
+        self._render_config = RenderConfig(
+            path=self.render_path,
+            dpi=self.dpi,
+            font_size=self.font_size,
+            pixels_per_patch=self.pixels_per_patch,
+            pad_size=self.pad_size,
+            font_file=self.font_file,
+        )
+        return self._render_config
+
+    @property
+    def latent_size(self) -> tuple[int, int]:
+        h = self.pixels_per_patch // self.compress_ratio
+        w = self.pixels_per_patch * 529 // self.compress_ratio
+        return (h, w)
+    
+    @property
+    def latent_patch_size(self) -> int:
+        return self.pixels_per_patch // self.compress_ratio
+
+    @property
+    def local_world_size(self) -> int:
+        if self._local_world_size >= 0:
+            return self._local_world_size
+        if self.distributed:
+            self._local_world_size = int(os.environ['LOCAL_WORLD_SIZE'])
+        else:
+            self._local_world_size = 1
+        return self._local_world_size
+
+    @property
+    def rank(self) -> int:
+        if self._rank >= 0:
+            return self._rank
+        if self.distributed:
+            self._rank = int(os.environ['RANK'])
+        else:
+            self._rank = 0
+        return self._rank
+    
+    @property
+    def world_size(self) -> int:
+        if self._world_size >= 0:
+            return self._world_size
+        if self.distributed:
+            self._world_size = int(os.environ['WORLD_SIZE'])
+        else:
+            self._world_size = 1
+        return self._world_size
+
+    @property
+    def device_id(self) -> int:
+        if self._device_id >= 0:
+            return self._device_id
+        if self.distributed:
+            self._device_id = self.rank % self.local_world_size
+        else:
+            self._device_id = self.rank
+        return self._device_id
 
     @property
     def num_gpu(self):
@@ -228,6 +306,9 @@ def get_config() -> ExpConfig:
     # add args to the argparse
     for k, v in fake_config.__dict__.items():
         if k[0] == '_':
+            continue
+        if isinstance(v, list):
+            parser.add_argument(f'--{k}', type=str, default=v, required=False, nargs='+')
             continue
         parser.add_argument(f'--{k}', type=type(v), default=v, required=False)
     args = parser.parse_args()
