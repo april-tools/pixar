@@ -4,6 +4,8 @@ import os
 import torch
 from torch import nn
 
+from ..text_graph import TGraph
+
 
 class LatentModel(nn.Module):
 

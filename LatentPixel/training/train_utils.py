@@ -64,13 +64,15 @@ def init_dist_environ(config: ExpConfig):
     if config.distributed:
         dist.init_process_group(backend='gloo' if config.on_cpu else 'nccl')
         keys = ['RANK', 'GROUP_RANK', 'LOCAL_RANK', 'LOCAL_WORLD_SIZE', 'WORLD_SIZE', 'MASTER_ADDR', 'MASTER_PORT']
-        infos = [f'{key}:{os.environ[key]}' for key in keys]
-        output(' '.join(infos))
+        infos = [f'{key}:{os.environ[key]}' for key in keys] + [f'DEVICE_ID:{config.device_id}']
+        torch.cuda.set_device(config.device_id)
+        print(' '.join(infos))
     else:
-        output('Stand-alone training.')
+        print('Stand-alone training.')
 
 def dist_sync(config: ExpConfig) -> None:
-    dist.barrier() if config.distributed else ...
+    print(f'Begin to sync at rank {config.rank}')
+    dist.barrier() if config.distributed else print('no sync')
 
 def mix_precision_stack(stack: ExitStack, config: ExpConfig) -> list:
     device_type = 'cpu' if config.on_cpu else 'cuda'
@@ -210,12 +212,15 @@ def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP) -> None:
 
     if scaler:
         scaler.unscale_(optim)
+        output('Scale the optim')
 
     # gradient clip
     if isinstance(model, FSDP):
         model.clip_grad_norm_(config.clip)
     else:
         clip_grad_norm_(model.parameters(), config.clip)
+        output(f'Clip the gradient with {config.clip}')
+
     
     # update parameters
     if scaler:

@@ -46,7 +46,7 @@ class ExpConfig:
     lr: float = 1e-5
     beta1: float = 0.9
     beta2: float = 0.95
-    decay: float = 0.1
+    decay: float = 0.01
     momentum: float = 0.95
     clip: float = 1.0
     mask_ratio: float = 0.25
@@ -134,6 +134,7 @@ class ExpConfig:
             return self._local_world_size
         if self.distributed:
             self._local_world_size = int(os.environ['LOCAL_WORLD_SIZE'])
+            print('local_world_size:', self._local_world_size)
         else:
             self._local_world_size = 1
         return self._local_world_size
@@ -163,7 +164,8 @@ class ExpConfig:
         if self._device_id >= 0:
             return self._device_id
         if self.distributed:
-            self._device_id = self.rank % self.local_world_size
+            self._device_id = int(os.environ['LOCAL_RANK'])
+            print('device_id', self._device_id)
         else:
             self._device_id = self.rank
         return self._device_id
@@ -173,6 +175,7 @@ class ExpConfig:
         if self._num_gpu > 0:
             return self._num_gpu
         self._num_gpu = self.num_gpu_per_node * self.num_node
+        print(f'There are {self._num_gpu} gpus')
         return self._num_gpu
     
     @property

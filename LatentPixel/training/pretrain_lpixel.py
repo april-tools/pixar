@@ -202,14 +202,13 @@ def train(config: ExpConfig):
         running_loss = distributed_average(running_loss, config.device_id)
         output(f'Loss: {running_loss}')
         log({'training loss': running_loss})
-        dist_sync(config)
 
-        if running_loss < config.best_loss:
-            config.best_loss = running_loss
-            if config.current_step - last_best_loss_step >= config.best_save_freq:
-                save_exp(model, config, 'best_train_loss')
-                last_best_loss_step = config.current_step
-        dist_sync(config)
+        # if running_loss < config.best_loss:
+        #     config.best_loss = running_loss
+        #     if config.current_step - last_best_loss_step >= config.best_save_freq:
+        #         save_exp(model, config, 'best_train_loss')
+        #         last_best_loss_step = config.current_step
+        # dist_sync(config)
 
         if config.current_step % config.save_freq == 0:
             save_exp(model, config, str(config.current_step))
