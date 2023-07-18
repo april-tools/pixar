@@ -58,7 +58,8 @@ def init_exp(config: ExpConfig) -> tuple[LatentModel, DataLoader, DataLoader, di
                 pixel_path=config.backbone_path,
                 coder_path=config.coder_path,
                 ckpt_path=config.init_path,
-                keep_decoder=False
+                keep_decoder=False,
+                init_connection_layer=True if config.stage == 1 else False
             )
         case _:
             raise NotImplementedError(f'Unrecognizable model type {config.model}')
@@ -182,7 +183,8 @@ def train(config: ExpConfig):
                 graph: TGraph = next(train_loader)
                 batch = graph.to_SD().to(config.device_id)
                 attention_mask = graph.get_attention_mask().to(config.device_id)
-                loss = model(pixel_values=batch, attention_mask=attention_mask, coder_grad=False).loss / config.num_grad_acc_step
+                span_mask = graph.get_span_mask() if config.span_mask else None
+                loss = model(pixel_values=batch, attention_mask=attention_mask, patch_mask=span_mask, coder_grad=False).loss / config.num_grad_acc_step
                 backward(loss, optim_parts)
 
                 running_loss += loss.item()
@@ -193,7 +195,8 @@ def train(config: ExpConfig):
             graph: TGraph = next(train_loader)
             batch = graph.to_SD().to(config.device_id)
             attention_mask = graph.get_attention_mask().to(config.device_id)
-            loss = model(pixel_values=batch, attention_mask=attention_mask, coder_grad=False).loss / config.num_grad_acc_step
+            span_mask = graph.get_span_mask() if config.span_mask else None
+            loss = model(pixel_values=batch, attention_mask=attention_mask, patch_mask=span_mask, coder_grad=False).loss / config.num_grad_acc_step
             backward(loss, optim_parts)
 
             running_loss += loss.item()

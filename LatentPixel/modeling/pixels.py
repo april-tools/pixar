@@ -31,7 +31,8 @@ class LPixelForPreTraining(LatentModel):
         pixel_path: str | PathLike = '', 
         coder_path: str | PathLike = '', 
         ckpt_path: str | PathLike = '',
-        keep_decoder: bool = False
+        keep_decoder: bool = False,
+        init_connection_layer: bool = False
         ):
         super().__init__()
         # save the init configurations
@@ -58,16 +59,8 @@ class LPixelForPreTraining(LatentModel):
             del self.coder.post_quant_conv
             self.coder.post_quant_conv = None
 
-        self.load_backbone(pixel_path)
-
         # load the pixel
-        self.pixel_config: PIXELConfig = PIXELConfig.from_pretrained(pixel_path)
-        self.pixel_config.mask_ratio = mask_ratio
-        self.pixel_config.image_size = image_size
-        self.pixel_config.patch_size = patch_size
-        self.pixel_config.num_channels = self.latent_channels
-        self.pixel: PIXELForPreTraining = PIXELForPreTraining.from_pretrained(pixel_path, config=self.pixel_config, ignore_mismatched_sizes=True)
-        self.pixel.vit.embeddings = PIXELEmbeddings(self.pixel_config)
+        self.load_backbone(pixel_path, init_connection_layer=init_connection_layer)
 
     def load_coder(self, path: str | os.PathLike, config: Any = None) -> nn.Module:
         # load the coder
@@ -76,14 +69,20 @@ class LPixelForPreTraining(LatentModel):
         self.latent_channels: int = self.coder_config['latent_channels']
         return self.coder
     
-    def load_backbone(self, path: str | PathLike, config: Any = None) -> nn.Module:
+    def load_backbone(self, path: str | PathLike, config: Any = None, init_connection_layer: bool = False) -> nn.Module:
         self.pixel_config: PIXELConfig = PIXELConfig.from_pretrained(path)
         self.pixel_config.mask_ratio = self.mask_ratio
         self.pixel_config.image_size = self.image_size
         self.pixel_config.patch_size = self.patch_size
         self.pixel_config.num_channels = self.latent_channels
+        # self.pixel_config.norm_pix_loss = False
         self.pixel: PIXELForPreTraining = PIXELForPreTraining.from_pretrained(path, config=self.pixel_config, ignore_mismatched_sizes=True)
-        self.pixel.vit.embeddings = PIXELEmbeddings(self.pixel_config)
+        if init_connection_layer:
+            print('Reinitialize the connection layers')
+            self.pixel.vit.embeddings = PIXELEmbeddings(self.pixel_config)
+            self.pixel.decoder.decoder_pred = nn.Linear(self.pixel_config.decoder_hidden_size, self.pixel_config.patch_size ** 2 * self.pixel_config.num_channels, bias=True)
+        else:
+            print('Reuse the connection layers')
         return self.pixel
 
     def forward(
@@ -105,10 +104,11 @@ class LPixelForPreTraining(LatentModel):
         if self.coder.decoder is None:
             return result
         
+        result.logits = self.pixel.unnormalize_pred(latent, result.logits)
+        
         if coder_grad:
             pixel_out = self.pixel.unpatchify(result.logits)
             r_latent = TGraph()
-            r_latent._value = pixel_out
             r_latent = r_latent.unsquarelize(self.pixel_config.patch_size)._value
             
             reconstructed = self.coder.decode(r_latent).sample

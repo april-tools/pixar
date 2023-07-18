@@ -2,7 +2,7 @@
 #SBATCH --partition=gpu
 #SBATCH --nodes=4
 #SBATCH --gres=gpu:4
-#SBATCH --time=24:00:00
+#SBATCH --time=40:00:00
 #SBATCH --qos=gpu
 #SBATCH --exclusive
 
@@ -32,19 +32,22 @@ srun torchrun \
     --rdzv-id=123 \
     --rdzv-endpoint=$head_node_ip \
     train.py \
-    --exp_type 'lpixel_pretrain' \
-    --backbone_path storage/pixel-base \
+    --exp_type 'lpixel_pretrain2' \
+    --backbone_path storage/checkpoints/lpixel_pretrain1/lpixel_pretrain/LPixelForPreTraining/20230718-005016/1500/backbone \
     --coder_path storage/SD2_VQGAN \
-    --render_path /work/sc118/sc118/yintaotai/msc_project/storage/checkpoints/lpixel_pretrain/lpixel_pretrain/LPixelForPreTraining/20230716-230628/2000/backbone \
+    --render_path storage/pixel-base \
     --dataset_paths storage/enwiki storage/bookcorpus \
-    --lr 5e-5 \
+    --lr 1e-4 \
+    --beta1 0.99 \
+    --beta2 0.999 \
+    --decay 0.05 \
     --stage 2 \
     --total_steps 100000 \
     --save_freq 1000 \
     --best_save_freq 100 \
     --seed 42 \
-    --batch_size 288 \
-    --sub_size 6 \
+    --batch_size 240 \
+    --sub_size 5 \
     --dpi 240 \
     --pixels_per_patch 32 \
     --mix_precision fp16 \

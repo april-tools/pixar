@@ -97,16 +97,14 @@ def get_pixel_pretrain_dataloader(
 
     print('Begin to interleave datasets')
     dataset = interleave_datasets(datasets, probabilities=dataset_sampling_probs, seed=seed, stopping_strategy='all_exhausted')
-    print(dataset.n_shards)
 
     dataset = dataset.map(
         partial(enwiki_map, min_len=min_len), 
         batch_size=1000, 
         drop_last_batch=True, 
+        batched = True,
         remove_columns=[name for name in dataset.column_names if name != 'text'],
     )
-    print(dataset.n_shards)
-
 
     if n_skip > 0:
         dataset = dataset.skip(n_skip)

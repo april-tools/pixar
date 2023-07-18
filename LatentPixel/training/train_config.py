@@ -50,6 +50,7 @@ class ExpConfig:
     momentum: float = 0.95
     clip: float = 1.0
     mask_ratio: float = 0.25
+    span_mask: bool = True
     total_steps: int = 4000 # number of parameter update steps
     max_token: int = 512    # 1024 for gpt2, 2048 for llama 7b
     eval_freq: int = 100

@@ -25,6 +25,7 @@ class RenderConfig:
     font_file: str = 'GoNotoCurrent.ttf'
     path: str = 'storage/pixel-base'
     rgb = True
+    mask_ratio: float = 0.25
 
     def to_dict(self) -> dict:
         return asdict(self)

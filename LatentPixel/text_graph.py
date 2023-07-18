@@ -18,7 +18,8 @@ from .utils import (
     get_attention_mask,
     get_num_patches,
     get_patch_size,
-    unpatchify
+    unpatchify,
+    get_span_mask
 )
 from .config import (
     PIXEL_DEFAULT_IMAGE_STD,
@@ -42,6 +43,9 @@ class TGraph:
     _val2pil = Compose([ToPILImage(mode='RGB')])
     _pix_normalizer = Compose([Normalize(PIXEL_DEFAULT_IMAGE_MEAN, PIXEL_DEFAULT_IMAGE_STD)])
     _inv_pix_normalizer = Compose([Normalize(- PIXEL_DEFAULT_IMAGE_MEAN / PIXEL_DEFAULT_IMAGE_STD, 1 / PIXEL_DEFAULT_IMAGE_STD)])
+    
+    def get_span_mask(self) -> torch.Tensor:
+        return get_span_mask(self.num_text_patches)
 
     def _from_PIL(self, img: Image) -> torch.Tensor:
         img = img.convert('RGB') if img.mode != 'RGB' else img
@@ -197,7 +201,7 @@ class TGraph:
         return self
     
     def get_attention_mask(self) -> torch.Tensor:
-        if self._attention_mask:
+        if self._attention_mask is not None:
             return self._attention_mask
         
         if self._value.dim() == 3:
@@ -213,7 +217,7 @@ class TGraph:
         recon = cls()
         origin.squarelize()
         generated.squarelize()
-        attn_mask = generated._attention_mask.unsqueeze(0) if generated._attention_mask.dim() == 3 else generated._attention_mask
+        attn_mask = origin.get_attention_mask().unsqueeze(0) if origin.get_attention_mask().dim() == 3 else origin.get_attention_mask()
         print(attn_mask.shape)
         attn_mask = attn_mask.unsqueeze(-1).repeat(1, 1, get_patch_size() ** 2 * 3)
         attn_mask = unpatchify(attn_mask)

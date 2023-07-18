@@ -2,7 +2,7 @@
 #SBATCH --partition=gpu
 #SBATCH --nodes=4
 #SBATCH --gres=gpu:4
-#SBATCH --time=0:30:0
+#SBATCH --time=5:30:0
 #SBATCH --qos=gpu
 #SBATCH --exclusive
 
@@ -32,18 +32,21 @@ srun torchrun \
     --rdzv-id=123 \
     --rdzv-endpoint=$head_node_ip \
     train.py \
-    --exp_type 'lpixel_pretrain' \
+    --exp_type 'lpixel_pretrain1' \
     --backbone_path storage/pixel-base \
     --coder_path storage/SD2_VQGAN \
     --render_path storage/pixel-base \
     --dataset_paths storage/enwiki storage/bookcorpus \
-    --lr 1e-4 \
+    --lr 1.5e-4 \
+    --beta1 0.99 \
+    --beta2 0.999 \
+    --decay 0.05 \
     --stage 1 \
-    --total_steps 4000 \
+    --total_steps 2000 \
     --save_freq 500 \
     --best_save_freq 50 \
     --seed 42 \
-    --batch_size 288 \
+    --batch_size 192 \
     --sub_size 6 \
     --dpi 240 \
     --pixels_per_patch 32 \

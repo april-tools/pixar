@@ -6,6 +6,7 @@ from time import strftime
 import json
 import random
 import time
+import math
 
 import torch
 import torch.multiprocessing as mp
@@ -13,6 +14,7 @@ import numpy as np
 
 from pixel import PangoCairoTextRenderer
 from pixel import Encoding
+from pixel import SpanMaskingGenerator
 
 from .config import RenderConfig
 
@@ -23,6 +25,7 @@ _txt_queue = mp.Queue()
 _img_queue = mp.Queue()
 _timestamp: str = None
 render_fn = None
+span_masking_generator: SpanMaskingGenerator = None
 
 def seed_everyting(seed: int) -> None:
     torch.manual_seed(seed)
@@ -66,23 +69,11 @@ def set_render(render_to_set: Any) -> None:
     global render
     render = render_to_set
 
-{
-  "background_color": "white",
-  "dpi": 120,
-  "font_color": "black",
-  "font_file": "GoNotoCurrent.ttf",
-  "font_size": 8,
-  "max_seq_length": 529,
-  "pad_size": 3,
-  "pixels_per_patch": 16,
-  "text_renderer_type": "TextRenderer"
-}
-
 def init_render(
         config: RenderConfig,
         num_worker: int = 1,
         ) -> PangoCairoTextRenderer:
-    global render, render_config, _render_processes, render_fn
+    global render, render_config, _render_processes, render_fn, span_masking_generator
     with open(os.path.join(config.path, 'text_renderer_config.json'), 'r') as fin:
         render_config = json.load(fin)
 
@@ -94,6 +85,13 @@ def init_render(
     render_config['rgb'] = config.rgb
 
     render = PangoCairoTextRenderer(**render_config)
+    span_masking_generator = SpanMaskingGenerator(
+        num_patches=render.max_seq_length,
+        num_masking_patches=math.ceil(config.mask_ratio * render.max_seq_length),
+        max_span_length=6,
+        spacing="span",
+        cumulative_span_weights=[0.2, 0.4, 0.6, 0.8, 0.9, 1.0],
+    )
 
     if num_worker > 1:
         for idx in range(num_worker):
@@ -115,6 +113,11 @@ def get_render() -> PangoCairoTextRenderer:
 def render_text(text: str | list[str], **kwargs) -> Encoding | list[Encoding]:
     global render_fn
     return render_fn(text)
+
+def get_span_mask(num_text_patches: int | list[int]) -> torch.Tensor:
+    if isinstance(num_text_patches, list):
+        return torch.cat([get_span_mask(num).unsqueeze(0) for num in num_text_patches], dim=0)
+    return torch.tensor(span_masking_generator(num_text_patches + 1))
     
 def init_timestamp() -> str:
     global _timestamp
