@@ -90,13 +90,13 @@ class TGraph:
         return self._value.permute([0, 2, 3, 1]).cpu().detach().numpy()
     
     @classmethod
-    def from_SD(cls, img: torch.Tensor, do_clip: bool = False) -> None:
-        TGraph = cls()
-        TGraph._value = (img / 2 + 0.5)
+    def from_SD(cls, img: torch.Tensor, do_clip: bool = False) -> TGraph:
+        graph = cls()
+        graph._value = (img / 2 + 0.5)
         if do_clip:
-            TGraph._value = TGraph._value.clamp_(0, 1)
+            graph._value = graph._value.clamp_(0, 1)
 
-        return TGraph
+        return graph
 
     def to_SD(self) -> torch.Tensor:
         return self._value * 2 - 1

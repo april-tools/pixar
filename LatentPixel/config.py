@@ -24,7 +24,7 @@ class RenderConfig:
     pad_size: int = 3
     font_file: str = 'GoNotoCurrent.ttf'
     path: str = 'storage/pixel-base'
-    rgb = True
+    rgb: bool = True
     mask_ratio: float = 0.25
 
     def to_dict(self) -> dict:

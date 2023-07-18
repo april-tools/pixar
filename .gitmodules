@@ -4,3 +4,6 @@
 [submodule "taming-transformers"]
 	path = taming-transformers
 	url = git@github.com:TYTTYTTYT/taming-transformers.git
+[submodule "latent-diffusion"]
+	path = latent-diffusion
+	url = git@github.com:TYTTYTTYT/latent-diffusion.git
