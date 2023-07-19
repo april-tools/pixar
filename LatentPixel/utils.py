@@ -191,4 +191,24 @@ def timeit(fn: Callable) -> Callable:
         return result
     return inner_fn
 
+def mask2img(mask: torch.Tensor | list[int] | list[list[int]], patch_size: int) -> torch.Tensor:
+    if isinstance(mask, list):
+        mask = torch.tensor(mask)
+    if mask.dim() == 2:
+        num_mask = mask.shape[0]
+    else:
+        assert mask.dim() == 1
+        num_mask = 1
+
+    olen = mask.shape[-1]
+    return mask \
+        .reshape(-1) \
+        .repeat(patch_size**2)  \
+        .reshape(-1, olen * num_mask) \
+        .transpose(-1, -2) \
+        .reshape(-1, olen * patch_size, patch_size) \
+        .transpose(-1, -2) \
+        .squeeze() \
+        .contiguous()
+
 atexit.register(_clean_up)

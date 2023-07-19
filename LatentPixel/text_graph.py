@@ -19,7 +19,8 @@ from .utils import (
     get_num_patches,
     get_patch_size,
     unpatchify,
-    get_span_mask
+    get_span_mask,
+    mask2img
 )
 from .config import (
     PIXEL_DEFAULT_IMAGE_STD,
@@ -31,11 +32,11 @@ from pixel import Encoding, PIXELForPreTrainingOutput
 
 class TGraph:
     
-    # The default image format, [n, c * h * w], varies in [0, 1]
+    # The default image format, [n, c, h, w] or [c, h, w], varies in [0, 1]
     _value: torch.Tensor | None = None
     _patch_size: int | None = None
     _attention_mask: torch.Tensor | None = None
-    _mask: torch.Tensor | None = None
+    _patch_mask: torch.Tensor | None = None
     num_text_patches: int | list[int] | None = None
 
     # useful transforms
@@ -43,9 +44,69 @@ class TGraph:
     _val2pil = Compose([ToPILImage(mode='RGB')])
     _pix_normalizer = Compose([Normalize(PIXEL_DEFAULT_IMAGE_MEAN, PIXEL_DEFAULT_IMAGE_STD)])
     _inv_pix_normalizer = Compose([Normalize(- PIXEL_DEFAULT_IMAGE_MEAN / PIXEL_DEFAULT_IMAGE_STD, 1 / PIXEL_DEFAULT_IMAGE_STD)])
+
+    @classmethod
+    def from_value(
+        cls, 
+        value: torch.Tensor, 
+        patch_size: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        patch_mask: torch.Tensor | None = None,
+        num_text_patches: int | list[int] | None = None
+        ) -> TGraph:
+        graph = TGraph()
+        graph._value = value
+        graph._patch_size = patch_size
+        graph._attention_mask = attention_mask
+        graph._patch_mask = patch_mask
+        graph.num_text_patches = num_text_patches
     
-    def get_span_mask(self) -> torch.Tensor:
-        return get_span_mask(self.num_text_patches)
+    # paint the masked patchs with color or noise
+    def paint_mask(self, color: str | tuple[float, float, float] = 'green', alpha: float = 0.1) -> TGraph:
+        self.unsquarelize()
+
+        if isinstance(color, str):
+            match color:
+                case 'white':
+                    color = (1, 1, 1)
+                case 'green':
+                    color = (0, 1, 0)
+                case 'red':
+                    color = (1, 0, 0)
+                case 'blue':
+                    color = (0, 0, 1)
+                case 'orange':
+                    color = (1, 0.647, 0)
+                case 'yellow':
+                    color = (1, 1, 0)
+                case 'brown':
+                    color = (150/255, 75/255, 0)
+                case 'noise':
+                    color = None
+                case _:
+                    raise KeyError(f'Unsupported color {color}')
+                
+        height = self.get_patch_size()
+        width = height * get_num_patches()
+
+        mask = mask2img(self.get_attention_mask() * self.get_patch_mask())
+
+        if color:
+            backcolor = torch.tensor(color, dtype=torch.float).repeat(height, width, 1).permute(2, 0, 1)
+        else:
+            backcolor = torch.randn_like(self._value) + 0.5
+
+        masked_value = (self._value * mask) * (1 - alpha) + backcolor * mask * alpha
+        un_masked = self._value * (1 - mask)
+        self._value = masked_value + un_masked
+
+        return self
+
+    def get_patch_mask(self) -> torch.Tensor:
+        if self._patch_mask:
+            return self._patch_mask
+        self._patch_mask = get_span_mask(self.num_text_patches)
+        return self._patch_mask
 
     def _from_PIL(self, img: Image) -> torch.Tensor:
         img = img.convert('RGB') if img.mode != 'RGB' else img
@@ -90,11 +151,14 @@ class TGraph:
         return self._value.permute([0, 2, 3, 1]).cpu().detach().numpy()
     
     @classmethod
-    def from_SD(cls, img: torch.Tensor, do_clip: bool = False) -> TGraph:
+    def from_SD(cls, img: torch.Tensor, do_clip: bool = False, attention_mask: torch.Tensor | None = None, patch_mask: torch.Tensor | None = None) -> TGraph:
         graph = cls()
         graph._value = (img / 2 + 0.5)
         if do_clip:
             graph._value = graph._value.clamp_(0, 1)
+
+        graph._attention_mask = attention_mask
+        graph._patch_mask = patch_mask
 
         return graph
 
@@ -106,20 +170,24 @@ class TGraph:
         return self
     
     @classmethod
-    def from_pixel_img(cls, img: torch.Tensor, do_clip: bool = False) -> None:
-        TGraph = cls()
-        TGraph._value = cls._inv_pix_normalizer(img)
-        if do_clip:
-            TGraph._value = TGraph._value.clamp_(0, 1)
+    def from_pixel_img(cls, img: torch.Tensor, do_clip: bool = False, attention_mask: torch.Tensor | None = None, patch_mask: torch.Tensor | None = None) -> None:
+        graph = cls()
+        graph._value = cls._inv_pix_normalizer(img)
 
-        return TGraph
+        if do_clip:
+            graph._value = graph._value.clamp_(0, 1)
+
+        graph._attention_mask = attention_mask
+        graph._patch_mask = patch_mask
+
+        return graph
     
     @classmethod
     def from_pixel(cls, output: PIXELForPreTrainingOutput, do_clamp: bool = False) -> TGraph:
-        TGraph = cls.from_pixel_logits(output.logits, do_clamp=do_clamp)
-        TGraph._attention_mask = output.attention_mask
-        TGraph._mask = output.mask
-        return TGraph
+        graph = cls.from_pixel_logits(output.logits, do_clamp=do_clamp)
+        graph._attention_mask = output.attention_mask
+        graph._patch_mask = output.mask
+        return graph
 
     def to_pixel(self) -> torch.Tensor:
         return self._pix_normalizer(self._value)
@@ -130,7 +198,6 @@ class TGraph:
         return cls.from_PIL(image)
     
     def _to_file(self, path: str | PathLike, value: torch.Tensor) -> None:
-        img = value.clamp(0, 1)
         img = self._val2pil(value)
         img.save(path, 'PNG')
 
@@ -192,7 +259,7 @@ class TGraph:
             self._patch_size = patch_size
 
         if self._patch_size is None:
-            self._patch_size = get_patch_size()
+            self._patch_size = self.get_patch_size()
 
         num_rows = self._value.shape[-2] // self._patch_size
         rows = torch.tensor_split(self._value, num_rows, dim=-2)
@@ -204,7 +271,7 @@ class TGraph:
         if self._attention_mask is not None:
             return self._attention_mask
         
-        if self._value.dim() == 3:
+        if isinstance(self.num_text_patches, int):
             self._attention_mask = get_attention_mask(self.num_text_patches, get_num_patches())
             return self._attention_mask
         
@@ -212,13 +279,18 @@ class TGraph:
         self._attention_mask = torch.cat(masks, dim=0)
         return self._attention_mask
     
+    def get_patch_size(self) -> int:
+        if self._patch_size:
+            return self._patch_size
+        self._patch_size = get_patch_size() # use default patch size
+        return self._patch_size
+    
     @classmethod
     def reconstruct(cls, origin: TGraph, generated: TGraph, do_clamp: bool = False) -> TGraph:
         recon = cls()
         origin.squarelize()
         generated.squarelize()
         attn_mask = origin.get_attention_mask().unsqueeze(0) if origin.get_attention_mask().dim() == 3 else origin.get_attention_mask()
-        print(attn_mask.shape)
         attn_mask = attn_mask.unsqueeze(-1).repeat(1, 1, get_patch_size() ** 2 * 3)
         attn_mask = unpatchify(attn_mask)
 
@@ -233,5 +305,7 @@ class TGraph:
         )
         if do_clamp:
             recon._value = recon._value.clamp_(0, 1)
+        recon._mask = generated._mask
+        recon.num_text_patches = origin.num_text_patches
         return recon
     
