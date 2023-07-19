@@ -87,43 +87,42 @@ class LPixelForPreTraining(LatentModel):
 
     def forward(
         self,
-        pixel_values: torch.Tensor,
-        attention_mask: torch.Tensor,
-        patch_mask: torch.Tensor | None = None,
-        coder_grad: bool | None = False
-    ) -> PIXELForPreTrainingOutput | torch.Tensor:
-        if coder_grad:
+        img: TGraph
+    ) -> TGraph:
+        pixel_values = img.unsquarelize().to_SD()
+
+        with torch.no_grad():
             latent = self.coder.encode(pixel_values).latent_dist.mode()
-        else:
-            with torch.no_grad():
-                latent = self.coder.encode(pixel_values).latent_dist.mode()
 
         # run the pixel model
-        result: PIXELForPreTrainingOutput = self.pixel(pixel_values=latent, attention_mask=attention_mask, patch_mask=patch_mask)
+        result: PIXELForPreTrainingOutput = self.pixel(pixel_values=latent, attention_mask=img.attention_mask, patch_mask=img.patch_mask)
 
         if self.coder.decoder is None:
+            result = TGraph.from_value(
+                value=result.logits,
+                attention_mask=img.attention_mask,
+                patch_mask=result.mask,
+                num_text_patches=img.num_text_patches,
+                loss=result.loss,
+            )
             return result
         
         result.logits = self.pixel.unnormalize_pred(latent, result.logits)
         
-        if coder_grad:
+        with torch.no_grad():
             pixel_out = self.pixel.unpatchify(result.logits)
             r_latent = TGraph()
+            r_latent._value = pixel_out
             r_latent = r_latent.unsquarelize(self.pixel_config.patch_size)._value
+
+            print(r_latent.shape)
             
             reconstructed = self.coder.decode(r_latent).sample
-            result.logits = reconstructed
-        else:
-            with torch.no_grad():
-                pixel_out = self.pixel.unpatchify(result.logits)
-                r_latent = TGraph()
-                r_latent._value = pixel_out
-                r_latent = r_latent.unsquarelize(self.pixel_config.patch_size)._value
-                
-                reconstructed = self.coder.decode(r_latent).sample
-                result.logits = reconstructed
+            print(reconstructed.shape)
+            rimg = TGraph.from_SD(reconstructed, True, img.attention_mask, result.mask)
+            rimg.loss = result.loss
 
-        return result
+        return rimg
     
     def get_connection_layers(self) -> nn.Module:
         return nn.ModuleList([

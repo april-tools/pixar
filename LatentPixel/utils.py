@@ -211,4 +211,64 @@ def mask2img(mask: torch.Tensor | list[int] | list[list[int]], patch_size: int) 
         .squeeze() \
         .contiguous()
 
+def _cons_mask(mask: torch.Tensor, begin_idx: int, num: int) -> torch.Tensor:
+    max_len = mask.shape[-1]
+    for idx in range(begin_idx, begin_idx + num):
+        if idx >= max_len:
+            break
+        mask[idx] = 1
+    return mask
+
+def cons_mask(mask: torch.Tensor, begin_idx: int | list[int], num: int) -> torch.Tensor:
+    if isinstance(begin_idx, int):
+        return _cons_mask(mask, begin_idx, num)
+    
+    for m, b_idx in zip(mask, begin_idx):
+        _cons_mask(m, b_idx, num)
+    
+    return mask
+
+def _gen_circle_mask(patch_size: int, width: int = 1) -> torch.Tensor:
+    mask = torch.zeros(patch_size, patch_size)
+    for row_idx in range(patch_size):
+        for column_idx in range(patch_size):
+            if row_idx < width or row_idx >= patch_size - width or column_idx < width or column_idx >= patch_size - width:
+                mask[row_idx, column_idx] = 1
+    return mask
+
+def gen_circle_mask(patch_size: int, num_patches: int, width: int = 1) -> torch.Tensor:
+    pattern = _gen_circle_mask(patch_size, width)
+    mask = pattern.reshape(-1).repeat(num_patches).reshape(patch_size * num_patches, patch_size).transpose(-1, -2).contiguous()
+    return mask
+
+def color_image(color: str | tuple[float, float, float], height: int, width: int) -> torch.Tensor:
+    if isinstance(color, str):
+        match color:
+            case 'white':
+                color = (1, 1, 1)
+            case 'black':
+                color = (0, 0, 0)
+            case 'green':
+                color = (0, 1, 0)
+            case 'red':
+                color = (1, 0, 0)
+            case 'blue':
+                color = (0, 0, 1)
+            case 'orange':
+                color = (1, 0.647, 0)
+            case 'yellow':
+                color = (1, 1, 0)
+            case 'brown':
+                color = (150/255, 75/255, 0)
+            case 'noise':
+                color = None
+            case _:
+                raise KeyError(f'Unsupported color {color}')
+    if color:
+        backcolor = torch.tensor(color, dtype=torch.float).repeat(height, width, 1).permute(2, 0, 1).squeeze()
+    else:
+        backcolor = torch.randn(3, height, width) + 0.5
+
+    return backcolor
+
 atexit.register(_clean_up)
