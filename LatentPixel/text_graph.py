@@ -26,7 +26,8 @@ from .utils import (
     mask2img,
     cons_mask,
     gen_circle_mask,
-    color_image
+    color_image,
+    shrink_mask
 )
 from .config import (
     PIXEL_DEFAULT_IMAGE_STD,
@@ -173,6 +174,9 @@ class TGraph:
     @patch_mask.setter
     def patch_mask(self, mask: torch.Tensor) -> None:
         self._patch_mask = mask
+
+    def shrink_patch_mask(self) -> torch.Tensor:
+        self.patch_mask = shrink_mask(self.patch_mask)
 
     @property
     def num_gen_patches(self) -> int | list[int]:

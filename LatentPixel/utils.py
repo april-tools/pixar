@@ -271,4 +271,24 @@ def color_image(color: str | tuple[float, float, float], height: int, width: int
 
     return backcolor
 
+def _shrink_mask(mask: torch.Tensor) -> torch.Tensor:
+    pre = 1
+    for idx in range(len(mask) - 1):
+        cur = mask[idx].item()
+        nex = mask[idx + 1]
+        if pre == 0 or nex == 0:
+            mask[idx] = 0
+        pre = cur
+    if mask[-1] == 1 and cur == 0:
+        mask[-1] = 0
+    return mask
+
+def shrink_mask(mask: torch.Tensor) -> torch.Tensor:
+    if mask.dim() == 1:
+        return _shrink_mask(mask)
+    for idx in range(len(mask)):
+        mask[idx] = _shrink_mask(mask[idx])
+
+    return mask
+
 atexit.register(_clean_up)
