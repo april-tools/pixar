@@ -84,6 +84,41 @@ class LPixelForPreTraining(LatentModel):
         else:
             print('Reuse the connection layers')
         return self.pixel
+    
+    def encode(self, img: TGraph) -> TGraph:
+        pixel_values = img.unsquarelize().to_SD()
+        with torch.no_grad():
+            latent = self.coder.encode(pixel_values).latent_dist.mode()
+        
+        return TGraph.from_value(
+            value=latent,
+            patch_size=self.pixel_config.patch_size,
+            attention_mask=img.attention_mask,
+            patch_mask=img.patch_mask,
+            num_text_patches=img.patch_mask,
+            num_gen_patches=img.num_gen_patches
+        )
+    
+    def predict(self, img: TGraph) -> TGraph:
+        output: PIXELForPreTrainingOutput = self.pixel(pixel_values=img._value, attention_mask=img.attention_mask, patch_mask=img.patch_mask)
+        logits = self.pixel.unnormalize_pred(img._value, output.logits)
+        logits = self.pixel.unpatchify(logits)
+        return TGraph.from_value(
+                value=logits,
+                attention_mask=img.attention_mask,
+                patch_mask=output.mask,
+                num_text_patches=img.num_text_patches,
+                loss=output.loss,
+                patch_size=self.pixel_config.patch_size
+            ).unsquarelize()
+    
+    def decode(self, img: TGraph) -> TGraph:
+        if self.coder.decoder is None:
+            raise RuntimeError('Decoder is offloaded')
+        
+        recon = self.coder.decode(img._value).sample
+        return TGraph.from_SD(recon, True, img.attention_mask, img.patch_mask)
+
 
     def forward(
         self,
@@ -114,11 +149,8 @@ class LPixelForPreTraining(LatentModel):
             r_latent = TGraph()
             r_latent._value = pixel_out
             r_latent = r_latent.unsquarelize(self.pixel_config.patch_size)._value
-
-            print(r_latent.shape)
             
             reconstructed = self.coder.decode(r_latent).sample
-            print(reconstructed.shape)
             rimg = TGraph.from_SD(reconstructed, True, img.attention_mask, result.mask)
             rimg.loss = result.loss
 

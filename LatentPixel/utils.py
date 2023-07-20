@@ -291,4 +291,15 @@ def shrink_mask(mask: torch.Tensor) -> torch.Tensor:
 
     return mask
 
+def _copy_list(origin: list[int]) -> list[int]:
+    return [o for o in origin]
+
+def copy_list(origin: list) -> list:
+    if isinstance(origin[0], list):
+        return [_copy_list(o) for o in origin]
+    return _copy_list(origin)
+
+def rand_mask(length: int, ratio: float):
+    return (torch.rand(length) < ratio).int()
+
 atexit.register(_clean_up)

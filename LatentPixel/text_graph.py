@@ -27,7 +27,9 @@ from .utils import (
     cons_mask,
     gen_circle_mask,
     color_image,
-    shrink_mask
+    shrink_mask,
+    copy_list,
+    rand_mask
 )
 from .config import (
     PIXEL_DEFAULT_IMAGE_STD,
@@ -106,12 +108,15 @@ class TGraph:
     
     @attention_mask.setter
     def attention_mask(self, mask: torch.Tensor) -> None:
-        self._attention_mask = mask
+        if mask is None:
+            self._attention_mask = None
+            return
+        self._attention_mask = torch.clone(mask)
 
     @property
     @torch.no_grad()
     def num_text_patches(self) -> int | list[int]:
-        if self._num_text_patches:
+        if self._num_text_patches is not None:
             return self._num_text_patches
         
         if self._attention_mask is not None:
@@ -121,7 +126,14 @@ class TGraph:
     
     @num_text_patches.setter
     def num_text_patches(self, num: int | list[int]) -> None:
-        self._num_text_patches = num
+        if num is None:
+            self.num = None
+            return
+        if isinstance(num, torch.Tensor):
+            num = num.tolist()
+            self._num_text_patches = num
+            return
+        self._num_text_patches = copy_list(num)
 
     @torch.no_grad()
     def clamp(self) -> TGraph:
@@ -140,8 +152,10 @@ class TGraph:
             idx = self.num_text_patches - self.num_gen_patches
         return idx
     
-    def init_patch_mask(self, mode: str, num: int = 1, idx: int = -1) -> torch.Tensor:
+    def init_patch_mask(self, mode: str, num: int = 1, idx: int = -1, ratio: float = 0.25) -> torch.Tensor:
         match mode:
+            case 'rand':
+                self._patch_mask = rand_mask(get_num_patches(), ratio)
             case 'span':
                 self._patch_mask = get_span_mask(self.num_text_patches)
             case 'end':
@@ -173,7 +187,10 @@ class TGraph:
     
     @patch_mask.setter
     def patch_mask(self, mask: torch.Tensor) -> None:
-        self._patch_mask = mask
+        if mask is None:
+            self._patch_mask = None
+            return
+        self._patch_mask = torch.clone(mask)
 
     def shrink_patch_mask(self) -> torch.Tensor:
         self.patch_mask = shrink_mask(self.patch_mask)
@@ -192,7 +209,10 @@ class TGraph:
     
     @num_gen_patches.setter
     def num_gen_patches(self, num: int | list[int]) -> None:
-        self._num_gen_patches = num
+        if num is None:
+            self._num_gen_patches = None
+            return
+        self._num_gen_patches = copy_list(num)
 
     def add_gen(self, num_generated: int) -> TGraph:
         o_gen_patches = self.num_gen_patches
@@ -230,10 +250,10 @@ class TGraph:
         graph = TGraph()
         graph._value = value
         graph._patch_size = patch_size
-        graph._attention_mask = attention_mask
-        graph._patch_mask = patch_mask
-        graph._num_text_patches = num_text_patches
-        graph._num_gen_patches = num_gen_patches
+        graph.attention_mask = attention_mask
+        graph.patch_mask = patch_mask
+        graph.num_text_patches = num_text_patches
+        graph.num_gen_patches = num_gen_patches
         graph.loss = loss
 
         return graph
@@ -454,6 +474,7 @@ class TGraph:
         recon.attention_mask = origin.attention_mask
         recon.patch_mask = generated.patch_mask
         recon.num_text_patches = origin.num_text_patches
+        recon.patch_size = origin.patch_size
 
         return recon
     
