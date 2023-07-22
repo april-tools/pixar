@@ -98,6 +98,8 @@ def train(config: ExpConfig):
 
             for _ in range(config.num_grad_acc_step - 1):
                 graph: TGraph = next(train_loader)
+                graph.set_device(config.device_id)
+
                 loss = model(graph).loss / config.num_grad_acc_step
 
                 backward(loss, optim_parts)
@@ -108,6 +110,7 @@ def train(config: ExpConfig):
             train_stack(stack, config, model.backbone)
 
             graph: TGraph = next(train_loader)
+            graph.set_device(config.device_id)
 
             loss = model(graph).loss / config.num_grad_acc_step
             backward(loss, optim_parts)

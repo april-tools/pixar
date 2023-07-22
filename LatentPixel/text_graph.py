@@ -51,6 +51,7 @@ class TGraph:
     _num_gen_patches: int | list[int] | None = None
     labels: torch.Tensor | None = None
     loss: torch.Tensor | None = None
+    device: Any = None
 
     # useful transforms
     _pil2val = Compose([PILToTensor()])
@@ -81,6 +82,12 @@ class TGraph:
             mask_ratio=mask_ratio
         )
         return init_render(config, num_worker=num_workers)
+    
+    @property
+    def value(self) -> torch.Tensor:
+        if self.device is None:
+            return self._value
+        return self._value.to(self.device)
 
     @property
     def patch_size(self) -> int:
@@ -92,10 +99,8 @@ class TGraph:
     @patch_size.setter
     def patch_size(self, size: int) -> None:
         self._patch_size = size
-    
-    @property
-    @torch.no_grad()
-    def attention_mask(self) -> torch.Tensor:
+
+    def _get_attention_mask(self) -> torch.Tensor:
         if self._attention_mask is not None:
             return self._attention_mask
         
@@ -106,6 +111,14 @@ class TGraph:
         masks = [get_attention_mask(num, get_num_patches()).unsqueeze(0) for num in self.num_text_patches]
         self._attention_mask = torch.cat(masks, dim=0)
         return self._attention_mask
+    
+    
+    @property
+    @torch.no_grad()
+    def attention_mask(self) -> torch.Tensor:
+        if self.device is None:
+            return self._get_attention_mask()
+        return self._get_attention_mask().to(self.device)
     
     @attention_mask.setter
     def attention_mask(self, mask: torch.Tensor) -> None:
@@ -179,12 +192,18 @@ class TGraph:
         
         return self._patch_mask
     
-    @property
-    def patch_mask(self):
+    @torch.no_grad()
+    def _get_patch_mask(self) -> torch.Tensor:
         if self._patch_mask is not None:
             return self._patch_mask
         
         return self.init_patch_mask('span')
+    
+    @property
+    def patch_mask(self):
+        if self.device is None:
+            return self._get_patch_mask()
+        return self._get_patch_mask().to(self.device)
     
     @patch_mask.setter
     def patch_mask(self, mask: torch.Tensor) -> None:
@@ -354,10 +373,10 @@ class TGraph:
         return graph
 
     def to_SD(self) -> torch.Tensor:
-        return self._value * 2 - 1
+        return self.value * 2 - 1
     
-    def to_device(self, device: Any) -> TGraph:
-        self._value = self._value.to(device)
+    def set_device(self, device: Any) -> TGraph:
+        self.device = device
         return self
     
     @classmethod
@@ -382,14 +401,15 @@ class TGraph:
         return graph.unsquarelize()
 
     @classmethod
-    def from_pixel(cls, output: PIXELForPreTrainingOutput, do_clamp: bool = False) -> TGraph:
-        graph = cls.from_pixel_logits(output.logits, do_clamp=do_clamp)
+    def from_pixel(cls, output: PIXELForPreTrainingOutput, do_clamp: bool = False, patch_size: int = 16) -> TGraph:
+        graph = cls.from_pixel_logits(output.logits, do_clamp=do_clamp, patch_size=patch_size)
         graph.attention_mask = output.attention_mask
         graph.patch_mask = output.mask
+        graph.loss = output.loss
         return graph
 
     def to_pixel(self) -> torch.Tensor:
-        return self._pix_normalizer(self._value)
+        return self._pix_normalizer(self.value)
     
     @classmethod
     def from_file(cls, path: str | PathLike) -> TGraph:

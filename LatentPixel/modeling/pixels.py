@@ -26,14 +26,16 @@ logger = logging.get_logger(__name__)
 class LPixelForMLM(LatentModel):
 
     def load_coder(self, path: str | PathLike) -> nn.Module:
-        if path is None:
+        if path is None or len(path) == 0:
             self.coder = None
             self.latent_size = self.img_size
             print(f'Coder path is none, do not load coder for this model')
             return None
         
-        self.coder: AutoencoderKL = AutoencoderKL.from_pretrained(path)
-        assert self.latent_size[0] == self.coder.config['latent_channels']
+        print(f'loading the coder from {path}')
+        coder: AutoencoderKL = AutoencoderKL.from_pretrained(path)
+        assert self.latent_size[0] == coder.config['latent_channels']
+        self.coder = coder
         return self.coder
     
     def save_coder(self, path: str | PathLike) -> None:
@@ -83,25 +85,41 @@ class LPixelForMLM(LatentModel):
     
     @torch.no_grad()
     def decode(self, img: TGraph) -> TGraph:
-        decoded = self.coder.decode(img._value).sample
+        decoded = self.coder.decode(img.value).sample
         result = TGraph.from_SD(
             img=decoded, 
             do_clip=True,
             attention_mask=img.attention_mask,
-            patch_mask=img.attention_mask
+            patch_mask=img.patch_mask
         )
         result.patch_size = self.img_size[1]
 
         return result
     
+    @property
+    def has_decoder(self) -> bool:
+        if self.coder is None:
+            return False
+        if self.coder.decoder is None:
+            return False
+        
+        return True
+    
     def latent_forward(self, img: TGraph) -> TGraph:
         output: PIXELForPreTrainingOutput = self.backbone(
-            pixel_values=img._value,
+            pixel_values=img.value if self.coder is not None else img.to_pixel(),
             attention_mask=img.attention_mask,
             patch_mask=img.patch_mask
             )
-        logits = self.backbone.unnormalize_pred(img._value, output.logits)
-        logits = self.backbone.unpatchify(logits)
+        if self.coder is None:
+            return TGraph.from_pixel(output, True, patch_size=self.latent_size[1]).unsquarelize()
+        
+        if isinstance(self.backbone, PIXELForPreTraining):
+            logits = self.backbone.unnormalize_pred(img._value, output.logits)
+            logits = self.backbone.unpatchify(logits)
+        else:
+            logits = self.backbone.module.unnormalize_pred(img._value, output.logits)
+            logits = self.backbone.module.unpatchify(logits)
 
         return TGraph.from_value(
             value=logits,
@@ -137,6 +155,7 @@ class LPixelForMLM(LatentModel):
         if self.coder is not None:
             del self.coder.decoder
             self.coder.decoder = None
+            self._has_decoder = False
             print('The decoder of the coder is deleted')
         else:
             print('There is no coder for this model, skip the deletion')

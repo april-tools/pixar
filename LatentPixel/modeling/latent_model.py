@@ -9,11 +9,6 @@ from ..text_graph import TGraph
 
 class LatentModel(nn.Module):
 
-    backbone: nn.Module = None
-    coder: nn.Module = None
-    img_size: tuple[int, int, int] = None
-    latent_size: tuple[int, int, int] = None
-
     def __init__(
             self, 
             coder_path: str | os.PathLike | None = None,
@@ -26,18 +21,19 @@ class LatentModel(nn.Module):
         self.img_size = img_size
         self.latent_size = latent_size
 
-        self.load_coder(coder_path)
-        self.load_backbone(backbone_path)
+        self.coder = self.load_coder(coder_path)
+        self.backbone = self.load_backbone(backbone_path)
 
     def forward(self, img: TGraph) -> TGraph:
         if self.coder is None:
             return self.latent_forward(img)
         
         latent = self.encode(img)
+        recon = self.latent_forward(latent)
         if self.has_decoder:
-            return self.decode(latent)
+            return self.decode(recon)
         
-        return latent
+        return recon
 
     def encode(self, img: TGraph) -> TGraph:
         raise NotImplementedError('All child module should define this function within it')
@@ -93,7 +89,7 @@ class LatentModel(nn.Module):
                 param.requires_grad = True
         elif stage == 2:
             print(f"Set gradient config for stage {stage}")
-            if self._coder is not None:
+            if self.coder is None:
                 print(f'This model has no coder to set grad')
                 return
             for param in self.coder.parameters():

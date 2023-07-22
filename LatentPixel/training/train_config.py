@@ -26,7 +26,7 @@ WANDB_TEAM = 'mlp-awesome'
 class ExpConfig:
     
     # you can use these fields as command line arguments
-    model: str = 'LPixelForPreTraining'
+    model: str = 'LPixelForMLM'
     init_path: str | PathLike = ''
     backbone_path: str | PathLike = ''
     coder_path: str | PathLike = ''

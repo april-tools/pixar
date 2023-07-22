@@ -86,8 +86,6 @@ def get_pixel_pretrain_dataloader(
     if streaming:
         print('Convert the dataset into a streaming dataset')
         datasets = [dataset.to_iterable_dataset(num_shards=128) for dataset in datasets]
-        print(datasets[0].n_shards)
-        print(datasets[1].n_shards)
 
     if rank is not None:
         print('Split dataset for parallel training')

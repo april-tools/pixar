@@ -1,5 +1,5 @@
 from .modeling import (
-    LPixelForPreTraining,
+    LPixelForMLM,
 )
 from .utils import (
     init_render,
@@ -18,7 +18,6 @@ from .dataprocess import (
 )
 
 __all__ = [
-    'LPixelForPreTraining'
     'ModelType'
     'TGraph'
     'init_render'
@@ -26,4 +25,5 @@ __all__ = [
     'timestamp'
     'get_pixel_pretrain_dataloader'
     'RenderConfig'
+    'LPixelForMLM'
 ]

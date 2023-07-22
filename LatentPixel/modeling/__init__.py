@@ -3,7 +3,6 @@ from .latent_model import LatentModel
 
 __all__ = [
     'LatentModel'
-    'LPixelForPreTraining'
     'LPixelForMLM'
 ]
 
