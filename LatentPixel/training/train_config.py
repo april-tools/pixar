@@ -50,7 +50,7 @@ class ExpConfig:
     momentum: float = 0.95
     clip: float = 1.0
     mask_ratio: float = 0.25
-    span_mask: bool = True
+    mask_type: str = 'span'
     total_steps: int = 4000 # number of parameter update steps
     max_token: int = 512    # 1024 for gpt2, 2048 for llama 7b
     eval_freq: int = 100
@@ -63,6 +63,8 @@ class ExpConfig:
     pixels_per_patch: int = 16
     compress_ratio: int = 8
     font_file: str = 'GoNotoCurrent.ttf'
+    image_size: list[int] = field(default_factory=list) 
+    latent_size: list[int] = field(default_factory=list) 
     
     torch_compile: bool = False # whether to compile the model into a static graph (refer to pytorch 2.0)
     dynamic_shape: bool = False # whether to use dynamic input shape while compiling
@@ -118,12 +120,6 @@ class ExpConfig:
         )
         self._render_config = rconf.to_dict()
         return rconf
-
-    @property
-    def latent_size(self) -> tuple[int, int]:
-        h = self.pixels_per_patch // self.compress_ratio
-        w = self.pixels_per_patch * 529 // self.compress_ratio
-        return (h, w)
     
     @property
     def latent_patch_size(self) -> int:
@@ -326,7 +322,10 @@ def get_config() -> ExpConfig:
         if k[0] == '_':
             continue
         if isinstance(v, list):
-            parser.add_argument(f'--{k}', type=str, default=v, required=False, nargs='+')
+            if k == 'dataset_paths':
+                parser.add_argument(f'--{k}', type=str, default=v, required=False, nargs='+')
+            elif k == 'image_size' or k == 'latent_size':
+                parser.add_argument(f'--{k}', type=int, default=v, required=False, nargs='+')
             continue
         parser.add_argument(f'--{k}', type=type(v), default=v, required=False)
     args = parser.parse_args()

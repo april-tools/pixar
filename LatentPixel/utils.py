@@ -292,9 +292,14 @@ def shrink_mask(mask: torch.Tensor) -> torch.Tensor:
     return mask
 
 def _copy_list(origin: list[int]) -> list[int]:
-    return [o for o in origin]
+    if isinstance(origin, list):
+        return [o for o in origin]
+    else:
+        return origin
 
 def copy_list(origin: list) -> list:
+    if not isinstance(origin, list):
+        return origin
     if isinstance(origin[0], list):
         return [_copy_list(o) for o in origin]
     return _copy_list(origin)

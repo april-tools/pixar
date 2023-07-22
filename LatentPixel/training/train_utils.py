@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
-from torch.optim import Optimizer, AdamW
+from torch.optim import Optimizer, AdamW, SGD
 from torch.optim.lr_scheduler import LRScheduler, CosineAnnealingLR
 # scale gradient to avoid gradient underflow while doing mixed-precision training
 import torch.distributed as dist
@@ -35,8 +35,8 @@ from pixel import PIXELLayer, PIXELEmbeddings
 import wandb
 
 from .train_config import ExpConfig
-from ..modeling import LatentModel
-from ..utils import timeit
+from ..modeling import LatentModel, LPixelForMLM
+from ..utils import timeit, init_render
 
 _progress_bar: tqdm = None
 _config: ExpConfig = None
@@ -71,15 +71,16 @@ def init_dist_environ(config: ExpConfig):
         print('Stand-alone training.')
 
 def dist_sync(config: ExpConfig) -> None:
-    print(f'Begin to sync at rank {config.rank}')
     dist.barrier() if config.distributed else print('no sync')
 
 def mix_precision_stack(stack: ExitStack, config: ExpConfig) -> list:
     device_type = 'cpu' if config.on_cpu else 'cuda'
     ctxs = []
     if config.mix_precision == 'fp16':
+        output('Using fp16 stack')
         ctxs.append(stack.enter_context(torch.autocast(device_type=device_type, dtype=torch.float16)))
     elif config.mix_precision == 'bf16':
+        output('Using bf16 stack')
         ctxs.append(stack.enter_context(torch.autocast(device_type=device_type, dtype=torch.bfloat16)))
     return ctxs
 
@@ -90,6 +91,7 @@ def eva_stack(stack: ExitStack, config: ExpConfig, model: Any) -> list:
 def train_gacc_stack(stack: ExitStack, config: ExpConfig, model: Any) -> list:
     ctxs = mix_precision_stack(stack, config)
     if isinstance(model, DDP) or isinstance(model, FSDP):
+        output('using no sync stack')
         ctxs += [stack.enter_context(model.no_sync())]
     return ctxs
 
@@ -199,10 +201,11 @@ def distributed_average(numbers: list | torch.Tensor | float, device: torch.devi
     return numbers
 
 def backward(loss: torch.Tensor, optim_parts: dict) -> None:
-    scaler = optim_parts['scaler']
+    scaler: ShardedGradScaler = optim_parts['scaler']
     if scaler is None:
         loss.backward()
     else:
+        output('Scale the loss')
         scaler.scale(loss).backward()
 
 def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP) -> None:
@@ -220,7 +223,6 @@ def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP) -> None:
     else:
         clip_grad_norm_(model.parameters(), config.clip)
         output(f'Clip the gradient with {config.clip}')
-
     
     # update parameters
     if scaler:
@@ -242,3 +244,100 @@ def log(metric: dict) -> None:
     global _config
     if _config.rank == 0:
         wandb.log(metric, step=_config.current_step)
+
+@timeit
+def prepare_model(config: ExpConfig) -> tuple[LatentModel, dict]:
+    # Select the correct model to load according to the config
+    match config.model:
+        case 'LPixelForMLM':
+            output(f'Latent image size: {config.latent_size}')
+            output(f'Latent patch size: {config.latent_patch_size}')
+            model = LPixelForMLM(
+                coder_path=config.coder_path,
+                backbone_path=config.backbone_path,
+                img_size=config.image_size,
+                latent_size=config.latent_size
+            )
+            if config.stage == 1:
+                model.init_connection_layers()
+                model.delete_unused_layers()
+            elif config.stage == 2:
+                model.delete_unused_layers()
+        case _:
+            raise NotImplementedError(f'Unrecognizable model type {config.model}')
+        
+    model.set_grad_for_stage(config.stage)
+    
+    if config.gradient_checkpointing:
+        output('Enable gradient checkpointing')
+        model.backbone.gradient_checkpointing_enable()
+
+    if config.half_coder and model.coder is not None:
+        output('Half the coder')
+        model.coder.half()
+        if not config.on_cpu:
+            model.coder.to(config.device_id)
+
+
+    # init optimizer
+    match config.optim.lower():
+        case 'adamw':
+            if config.stage == 1:
+                output('Load connection parameters to the AdamW optimizer.')
+            else:
+                output('Load backbone parameters to the AdamW optimizer.')
+            optim = AdamW(
+                params=model.get_connection_params() if config.stage == 1 else model.get_backbone_parameters(),
+                lr=config.lr,
+                betas=(config.beta1, config.beta2),
+                weight_decay=config.decay,
+            )
+        case 'sgd':
+            if config.stage == 1:
+                output('Load connection parameters to the SGD optimizer.')
+            else:
+                output('Load backbone parameters to the SGD optimizer.')
+            optim = SGD(
+                params=model.get_connection_params() if config.stage == 1 else model.get_backbone_parameters(),
+                lr=config.lr,
+                momentum=config.momentum
+            )
+        case _:
+            raise KeyError(f'Invalid optim type {config.optim}')
+
+    model.backbone = wrap_model(model.backbone, config)
+
+    # init scheduler
+    if config.scheduler.lower() == 'cosineannealinglr':
+        scheduler = CosineAnnealingLR(
+            optimizer=optim,
+            T_max=config.total_steps,
+            eta_min=0.1 * config.lr # from llama paper
+        )
+    else:
+        raise KeyError(f'Invalid scheduler type {config.scheduler}')
+    
+    # init the scheduler for mixedprecision training
+    scaler = None
+    if config.mix_precision == 'fp16':
+        print('init the gradscaler for mixed-precision training')
+        scaler = ShardedGradScaler()    # This works for both DDP and FSDP
+
+    optim_parts = {
+        'optim': optim,
+        'scheduler': scheduler,
+        'scaler': scaler
+    }
+
+    init_progress_bar(config)
+    init_render(config.render_config)
+
+    return model, optim_parts
+
+@timeit
+def save_exp(model: LatentModel, config: ExpConfig, name: str) -> None:
+    output(f'Saving the {name} model at step {config.current_step}')
+    if config.rank == 0:
+        model.save_backbone(config.backbone_ckpt_path(name))
+        model.save_coder(config.coder_ckpt_path(name))
+        config.save(name)

@@ -49,6 +49,7 @@ class TGraph:
     _patch_mask: torch.Tensor | None = None
     _num_text_patches: int | list[int] | None = None
     _num_gen_patches: int | list[int] | None = None
+    labels: torch.Tensor | None = None
     loss: torch.Tensor | None = None
 
     # useful transforms
@@ -91,7 +92,7 @@ class TGraph:
     @patch_size.setter
     def patch_size(self, size: int) -> None:
         self._patch_size = size
-
+    
     @property
     @torch.no_grad()
     def attention_mask(self) -> torch.Tensor:

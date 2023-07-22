@@ -1,4 +1,4 @@
-from LatentPixel.training.pretrain_lpixel import train, get_config, init_wandb
+from LatentPixel.training.pretrain_latent import train, get_config, init_wandb
 from LatentPixel.training.train_utils import init_dist_environ
 
 if __name__ == '__main__':

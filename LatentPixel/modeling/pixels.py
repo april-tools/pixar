@@ -4,6 +4,7 @@ from os import PathLike
 
 import torch
 from torch import nn
+from torch.nn.parallel import DistributedDataParallel
 
 from transformers import PreTrainedModel, PretrainedConfig
 from diffusers.models import AutoencoderKL
@@ -13,6 +14,8 @@ from pixel import PIXELConfig, PIXELForPreTrainingOutput
 from transformers.configuration_utils import PretrainedConfig
 from transformers.utils import logging
 
+from LatentPixel.text_graph import TGraph
+
 from ..text_graph import TGraph
 from ..config import ModelType
 from .latent_model import LatentModel
@@ -20,71 +23,50 @@ from .latent_model import LatentModel
 logger = logging.get_logger(__name__)
 
 
-class LPixelForPreTraining(LatentModel):
-    
-    def __init__(
-        self, 
-        coder_type: ModelType, 
-        mask_ratio: float,
-        image_size: tuple[int, int],
-        patch_size: int,
-        pixel_path: str | PathLike = '', 
-        coder_path: str | PathLike = '', 
-        ckpt_path: str | PathLike = '',
-        keep_decoder: bool = False,
-        init_connection_layer: bool = False
-        ):
-        super().__init__()
-        # save the init configurations
-        self.coder_type = coder_type
-        self.pixel_path = pixel_path
-        self.coder_path = coder_path
-        self.ckpt_path = ckpt_path
-        self.mask_ratio = mask_ratio
-        self.image_size = image_size
-        self.patch_size = patch_size
-        self.keep_decoder = keep_decoder
+class LPixelForMLM(LatentModel):
 
-        if len(self.pixel_path) == 0:
-            self.pixel_path = os.path.join([self.ckpt_path, 'pixel'])
-        if len(self.coder_path) == 0:
-            self.coder_path = os.path.join([self.ckpt_path, 'coder'])
-                
-        # load the coder
-        self.load_coder(coder_path)
-        if not keep_decoder:
-            print('unload the decoder')
-            del self.coder.decoder
-            self.coder.decoder = None
-            del self.coder.post_quant_conv
-            self.coder.post_quant_conv = None
-
-        # load the pixel
-        self.load_backbone(pixel_path, init_connection_layer=init_connection_layer)
-
-    def load_coder(self, path: str | os.PathLike, config: Any = None) -> nn.Module:
-        # load the coder
+    def load_coder(self, path: str | PathLike) -> nn.Module:
+        if path is None:
+            self.coder = None
+            self.latent_size = self.img_size
+            print(f'Coder path is none, do not load coder for this model')
+            return None
+        
         self.coder: AutoencoderKL = AutoencoderKL.from_pretrained(path)
-        self.coder_config: dict = self.coder.config
-        self.latent_channels: int = self.coder_config['latent_channels']
+        assert self.latent_size[0] == self.coder.config['latent_channels']
         return self.coder
     
-    def load_backbone(self, path: str | PathLike, config: Any = None, init_connection_layer: bool = False) -> nn.Module:
-        self.pixel_config: PIXELConfig = PIXELConfig.from_pretrained(path)
-        self.pixel_config.mask_ratio = self.mask_ratio
-        self.pixel_config.image_size = self.image_size
-        self.pixel_config.patch_size = self.patch_size
-        self.pixel_config.num_channels = self.latent_channels
-        # self.pixel_config.norm_pix_loss = False
-        self.pixel: PIXELForPreTraining = PIXELForPreTraining.from_pretrained(path, config=self.pixel_config, ignore_mismatched_sizes=True)
-        if init_connection_layer:
-            print('Reinitialize the connection layers')
-            self.pixel.vit.embeddings = PIXELEmbeddings(self.pixel_config)
-            self.pixel.decoder.decoder_pred = nn.Linear(self.pixel_config.decoder_hidden_size, self.pixel_config.patch_size ** 2 * self.pixel_config.num_channels, bias=True)
-        else:
-            print('Reuse the connection layers')
-        return self.pixel
+    def save_coder(self, path: str | PathLike) -> None:
+        if self.coder is None:
+            print('Abandon the coder saving since the decoder is deleted.')
+            return
+        elif self.coder.decoder is None:
+            print('Abandon the coder saving since the decoder is deleted.')
+            return
+        
+        self.coder.save_pretrained(path)
     
+    def load_backbone(self, path: str | PathLike) -> nn.Module:
+        pixel_config = PIXELConfig.from_pretrained(path)
+        pixel_config.image_size = self.latent_size[1:]
+        pixel_config.patch_size = self.latent_size[1]
+        pixel_config.num_channels = self.latent_size[0]
+        self.backbone_config = pixel_config
+        self.backbone: PIXELForPreTraining = PIXELForPreTraining.from_pretrained(path, config=pixel_config, ignore_mismatched_sizes=True)
+        self.backbone.vit.embeddings.gen_mode = True
+        return self.backbone
+    
+    def save_backbone(self, path: str | PathLike) -> None:
+        if isinstance(self.backbone, PIXELForPreTraining):
+            self.backbone.save_pretrained(path)
+        elif isinstance(self.backbone, DistributedDataParallel):
+            self.backbone.module.save_pretrained(path)
+        else:
+            raise NotImplementedError(f'Saving for {type(self.backbone)} has not been implemented!')
+        
+        print(f'PIXEL backbone saved!')
+    
+    @torch.no_grad()
     def encode(self, img: TGraph) -> TGraph:
         pixel_values = img.unsquarelize().to_SD()
         with torch.no_grad():
@@ -92,111 +74,73 @@ class LPixelForPreTraining(LatentModel):
         
         return TGraph.from_value(
             value=latent,
-            patch_size=self.pixel_config.patch_size,
+            patch_size=self.latent_size[1],
             attention_mask=img.attention_mask,
             patch_mask=img.patch_mask,
             num_text_patches=img.patch_mask,
             num_gen_patches=img.num_gen_patches
         )
     
-    def predict(self, img: TGraph) -> TGraph:
-        output: PIXELForPreTrainingOutput = self.pixel(pixel_values=img._value, attention_mask=img.attention_mask, patch_mask=img.patch_mask)
-        logits = self.pixel.unnormalize_pred(img._value, output.logits)
-        logits = self.pixel.unpatchify(logits)
-        return TGraph.from_value(
-                value=logits,
-                attention_mask=img.attention_mask,
-                patch_mask=output.mask,
-                num_text_patches=img.num_text_patches,
-                loss=output.loss,
-                patch_size=self.pixel_config.patch_size
-            ).unsquarelize()
-    
+    @torch.no_grad()
     def decode(self, img: TGraph) -> TGraph:
-        if self.coder.decoder is None:
-            raise RuntimeError('Decoder is offloaded')
-        
-        recon = self.coder.decode(img._value).sample
-        return TGraph.from_SD(recon, True, img.attention_mask, img.patch_mask)
+        decoded = self.coder.decode(img._value).sample
+        result = TGraph.from_SD(
+            img=decoded, 
+            do_clip=True,
+            attention_mask=img.attention_mask,
+            patch_mask=img.attention_mask
+        )
+        result.patch_size = self.img_size[1]
 
-
-    def forward(
-        self,
-        img: TGraph
-    ) -> TGraph:
-        pixel_values = img.unsquarelize().to_SD()
-
-        with torch.no_grad():
-            latent = self.coder.encode(pixel_values).latent_dist.mode()
-
-        # run the pixel model
-        result: PIXELForPreTrainingOutput = self.pixel(pixel_values=latent, attention_mask=img.attention_mask, patch_mask=img.patch_mask)
-
-        if self.coder.decoder is None:
-            result = TGraph.from_value(
-                value=result.logits,
-                attention_mask=img.attention_mask,
-                patch_mask=result.mask,
-                num_text_patches=img.num_text_patches,
-                loss=result.loss,
+        return result
+    
+    def latent_forward(self, img: TGraph) -> TGraph:
+        output: PIXELForPreTrainingOutput = self.backbone(
+            pixel_values=img._value,
+            attention_mask=img.attention_mask,
+            patch_mask=img.patch_mask
             )
-            return result
-        
-        result.logits = self.pixel.unnormalize_pred(latent, result.logits)
-        
-        with torch.no_grad():
-            pixel_out = self.pixel.unpatchify(result.logits)
-            r_latent = TGraph()
-            r_latent._value = pixel_out
-            r_latent = r_latent.unsquarelize(self.pixel_config.patch_size)._value
-            
-            reconstructed = self.coder.decode(r_latent).sample
-            rimg = TGraph.from_SD(reconstructed, True, img.attention_mask, result.mask)
-            rimg.loss = result.loss
+        logits = self.backbone.unnormalize_pred(img._value, output.logits)
+        logits = self.backbone.unpatchify(logits)
 
-        return rimg
+        return TGraph.from_value(
+            value=logits,
+            attention_mask=img.attention_mask,
+            patch_mask=output.mask,
+            num_text_patches=img.num_text_patches,
+            loss=output.loss,
+            patch_size=self.latent_size[1]
+        ).unsquarelize()
     
     def get_connection_layers(self) -> nn.Module:
         return nn.ModuleList([
-            self.pixel.vit.embeddings,
-            self.pixel.decoder.decoder_pred
+            self.backbone.vit.embeddings,
+            self.backbone.decoder.decoder_pred
         ])
     
-    def get_backbone_parameters(self) -> Any:
-        return self.pixel.parameters()
+    def get_backbone_parameters(self) -> Iterator[nn.Parameter]:
+        return self.backbone.parameters()
     
     def get_connection_params(self) -> Iterator[nn.Parameter]:
         return self.get_connection_layers().parameters()
     
-    def save_backbone(self, path: str | PathLike) -> None:
-        if isinstance(self.pixel, PIXELForPreTraining):
-            self.pixel.save_pretrained(path)
-        else:
-            self.pixel.module.save_pretrained(path)
+    def init_connection_layers(self) -> None:
+        print('Reinitialize the connection layers for the latent pixel')
+        self.backbone.vit.embeddings = PIXELEmbeddings(self.backbone_config)
+        self.backbone.decoder.decoder_pred = nn.Linear(
+            self.backbone_config.decoder_hidden_size,
+            self.latent_size[1] ** 2 * self.latent_size[0], 
+            bias=True
+        )
 
-    def save_coder(self, path: str | PathLike) -> None:
-        if self.keep_decoder:
-            self.coder.save_pretrained(path)
+    def delete_unused_layers(self) -> None:
+        if self.coder is not None:
+            del self.coder.decoder
+            self.coder.decoder = None
+            print('The decoder of the coder is deleted')
         else:
-            print('Abandon the coder saving since the decoder is deleted.')
-
-    def save_model(self, path: str | PathLike, only_backbone: bool = False) -> None:
-        pixel_path = os.path.join(path, 'pixel')
-        coder_path = os.path.join(path, 'coder')
-        self.pixel.save_pretrained(pixel_path)
+            print('There is no coder for this model, skip the deletion')
         
-        if not only_backbone:
-            self.coder.save_pretrained(coder_path)
+class LPixelForClassification(LatentModel):
 
-    def compile(self) -> None:
-        self.pixel = torch.compile(self.pixel, mode='max-autotune', dynamic=False)
-
-    def wrap(self, wrap_fn: Callable[..., Any]) -> None:
-        self.pixel.vit.embeddings = wrap_fn(self.pixel.vit.embeddings)
-        self.pixel.vit.encoder = wrap_fn(self.pixel.vit.encoder)
-        self.pixel.vit.layernorm = wrap_fn(self.pixel.vit.layernorm)
-        self.pixel.decoder.decoder_embed = wrap_fn(self.pixel.decoder.decoder_embed)
-        self.pixel.decoder.wrapped = wrap_fn(self.pixel.decoder.wrapped)
-        self.pixel.decoder.decoder_layers = wrap_fn(self.pixel.decoder.decoder_layers)
-        self.pixel.decoder.decoder_norm = wrap_fn(self.pixel.decoder.decoder_norm)
-        self.pixel.decoder.decoder_pred = wrap_fn(self.pixel.decoder.decoder_pred)
+    pass

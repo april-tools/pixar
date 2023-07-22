@@ -21,18 +21,15 @@ def dataloader_init_fn(worker_id, seed: int, render_config: RenderConfig) -> Non
         print(f'initialize the render with parameters {render_config.to_dict()}')
         init_render(render_config)
 
-def render_batched_text(batch: list[dict[str, str]], model_type: ModelType) -> torch.Tensor:
+def render_batched_text(batch: list[dict[str, str]], mask_ratio: float, mask_type: str) -> torch.Tensor:
     sents = []
     for sent in batch:
         sents.append(sent['text'])
     img = TGraph.from_text(sents)
-    match model_type:
-        case ModelType.SD:
-            return img.to_SD()
-        case ModelType.PIXEL:
-            return img.to_pixel()
-        case _:
-            return img
+    img.init_patch_mask(mask_type, ratio=mask_ratio)
+    img.patch_mask
+    img.attention_mask
+    return img
         
 def collate_text(texts: list[str], min_len: int) -> list[str]:
     splitted = []
@@ -67,7 +64,8 @@ def get_pixel_pretrain_dataloader(
         batch_size: int, 
         num_workers: int, 
         seed: int,
-        model_type: ModelType,
+        mask_ratio: float,
+        mask_type: str,
         render_config: RenderConfig = None,
         n_skip: int = 0,
         min_len: int = 400,
@@ -114,7 +112,7 @@ def get_pixel_pretrain_dataloader(
         batch_size=batch_size,
         num_workers=num_workers,
         prefetch_factor=4,
-        collate_fn=partial(render_batched_text, model_type=model_type),
+        collate_fn=partial(render_batched_text, mask_ratio=mask_ratio, mask_type=mask_type),
         worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
         drop_last=True
     )
