@@ -7,8 +7,8 @@ from math import sqrt
 
 import torch
 from torchvision.transforms import PILToTensor, Compose, ToPILImage, Normalize
-
 import numpy as np
+import pytesseract
 
 import PIL
 from PIL.Image import Image
@@ -52,6 +52,7 @@ class TGraph:
     labels: torch.Tensor | None = None
     loss: torch.Tensor | None = None
     device: Any = None
+    text: str | list[str] | None = None
 
     # useful transforms
     _pil2val = Compose([PILToTensor()])
@@ -68,6 +69,7 @@ class TGraph:
         font_file: str = 'GoNotoCurrent.ttf',
         path: str = 'storage/pixel-base',
         rgb: bool = True,
+        binary: bool = False,
         mask_ratio: float = 0.25,
         num_workers: int = 1
     ) -> PangoCairoTextRenderer:
@@ -79,7 +81,8 @@ class TGraph:
             font_file=font_file,
             path=path,
             rgb=rgb,
-            mask_ratio=mask_ratio
+            mask_ratio=mask_ratio,
+            binary=binary
         )
         return init_render(config, num_worker=num_workers)
     
@@ -432,19 +435,21 @@ class TGraph:
     @classmethod
     def from_text(cls, text: str | list[str], **kwargs) -> TGraph:
         encods = render_text(text, **kwargs)
-        TGraph = cls()
+        graph = cls()
         if isinstance(encods, Encoding):
-            TGraph._value = torch.tensor(encods.pixel_values / 255, dtype=torch.float).permute(2, 0, 1)
-            TGraph.num_text_patches = encods.num_text_patches
-            return TGraph
+            graph._value = torch.tensor(encods.pixel_values / 255, dtype=torch.float).permute(2, 0, 1)
+            graph.num_text_patches = encods.num_text_patches
+            graph.text = text
+            return graph
         
         imgs = [torch.tensor(encod.pixel_values / 255, dtype=torch.float).permute(2, 0, 1).unsqueeze(0) for encod in encods]
-        TGraph._value = torch.cat(imgs, dim=0).contiguous()
+        graph._value = torch.cat(imgs, dim=0).contiguous()
 
         nums = [encod.num_text_patches for encod in encods]
-        TGraph.num_text_patches = nums
+        graph.num_text_patches = nums
+        graph.text = text
 
-        return TGraph
+        return graph
     
     def squarelize(self) -> TGraph:
         if self.is_squre:
@@ -499,3 +504,12 @@ class TGraph:
 
         return recon
     
+    @torch.no_grad()
+    def ocr(self) -> str | list[str]:
+        imgs = self.unsquarelize().to_PIL()
+        if isinstance(imgs, list):
+            self.text = [pytesseract.image_to_string(img) for img in imgs]
+        else:
+            self.text = pytesseract.image_to_string(imgs)
+
+        return self.text

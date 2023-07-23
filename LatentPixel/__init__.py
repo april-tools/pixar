@@ -4,7 +4,9 @@ from .modeling import (
 from .utils import (
     init_render,
     init_timestamp,
-    timestamp
+    timestamp,
+    params2dict,
+    timeit
 )
 from .config import (
     ModelType,
@@ -16,6 +18,7 @@ from .text_graph import (
 from .dataprocess import (
     get_pixel_pretrain_dataloader
 )
+from .metrics import EditDistance
 
 __all__ = [
     'ModelType'
@@ -26,4 +29,7 @@ __all__ = [
     'get_pixel_pretrain_dataloader'
     'RenderConfig'
     'LPixelForMLM'
+    'EditDistance'
+    'params2dict'
+    'timeit'
 ]

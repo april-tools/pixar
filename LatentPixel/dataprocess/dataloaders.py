@@ -29,9 +29,11 @@ def render_batched_text(batch: list[dict[str, str]], mask_ratio: float, mask_typ
     img.init_patch_mask(mask_type, ratio=mask_ratio)
     img.patch_mask
     img.attention_mask
+
     return img
         
-def collate_text(texts: list[str], min_len: int) -> list[str]:
+def collate_text(batch: dict, min_len: int, max_len: int | None = None) -> list[str]:
+    texts: list[str] = batch['text']
     splitted = []
     for text in texts:
         splitted += text.strip().split('\n')
@@ -50,15 +52,13 @@ def collate_text(texts: list[str], min_len: int) -> list[str]:
     if len(block) > 0:
         results.append(' '.join(block))
 
-    return results
+    if max_len is not None:
+        chunked = [sent[:max_len] for sent in results]
+    else:
+        chunked = results
 
-def enwiki_map(batch, min_len: int):
-    texts = batch['text']
-    collated = collate_text(texts, min_len)
+    return {'text': chunked}
 
-    return {'text': collated}
-
-@timeit
 def get_pixel_pretrain_dataloader(
         paths: list[str | os.PathLike],
         batch_size: int, 
@@ -69,6 +69,7 @@ def get_pixel_pretrain_dataloader(
         render_config: RenderConfig = None,
         n_skip: int = 0,
         min_len: int = 400,
+        max_len: int | None = None,
         streaming: bool = True,
         rank: int = None, 
         world_size: int = None,
@@ -93,9 +94,9 @@ def get_pixel_pretrain_dataloader(
 
     print('Begin to interleave datasets')
     dataset = interleave_datasets(datasets, probabilities=dataset_sampling_probs, seed=seed, stopping_strategy='all_exhausted')
-
+    print('max_len', max_len)
     dataset = dataset.map(
-        partial(enwiki_map, min_len=min_len), 
+        partial(collate_text, min_len=min_len, max_len=max_len), 
         batch_size=1000, 
         drop_last_batch=True, 
         batched = True,

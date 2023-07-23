@@ -1,12 +1,14 @@
 from typing import Any, Callable
 import os
 from os import PathLike
+from functools import wraps
 import atexit
 from time import strftime
 import json
 import random
 import time
 import math
+import argparse
 
 import torch
 import torch.multiprocessing as mp
@@ -26,23 +28,34 @@ _img_queue = mp.Queue()
 _timestamp: str = None
 render_fn = None
 span_masking_generator: SpanMaskingGenerator = None
+binary = False
 
 def seed_everyting(seed: int) -> None:
     torch.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
 
+def _rend_once(text: str) -> Encoding:
+    global binary, render
+    result = render(text)
+    if not render.rgb:
+        result.pixel_values = np.tile(np.expand_dims(result.pixel_values, axis=-1), [1, 1, 3])
+    if binary:
+        result.pixel_values = (result.pixel_values > 255 / 2).astype(int) * 255
+
+    return result
+
 def _stand_alone_render(text: str | list[str]) -> Encoding | list[Encoding]:
     if isinstance(text, str):
-        return render(text)
+        return _rend_once(text)
     
-    return [render(txt) for txt in text]
+    return [_rend_once(txt) for txt in text]
 
 def _render_process() -> None:
     global _txt_queue, _img_queue, render
     while True:
         txt = _txt_queue.get(timeout=600)
-        img = render(text=txt)
+        img = _rend_once(text=txt)
         _img_queue.put(img, timeout=30)
 
 def _parallel_rend(text: str | list[str]) -> Encoding | list[Encoding]:
@@ -73,7 +86,7 @@ def init_render(
         config: RenderConfig,
         num_worker: int = 1,
         ) -> PangoCairoTextRenderer:
-    global render, render_config, _render_processes, render_fn, span_masking_generator
+    global render, render_config, _render_processes, render_fn, span_masking_generator, binary
     with open(os.path.join(config.path, 'text_renderer_config.json'), 'r') as fin:
         render_config = json.load(fin)
 
@@ -83,6 +96,7 @@ def init_render(
     render_config['font_file'] = os.path.join(config.path, config.font_file)
     render_config['pad_size'] = config.pad_size
     render_config['rgb'] = config.rgb
+    binary = config.binary
 
     render = PangoCairoTextRenderer(**render_config)
     span_masking_generator = SpanMaskingGenerator(
@@ -183,6 +197,7 @@ def unpatchify(x: torch.Tensor, p: int = None) -> torch.Tensor:
     return imgs
 
 def timeit(fn: Callable) -> Callable:
+    @wraps(fn)
     def inner_fn(*args, **kwargs) -> Any:
         tic = time.time()
         result = fn(*args, **kwargs)
@@ -306,5 +321,36 @@ def copy_list(origin: list) -> list:
 
 def rand_mask(length: int, ratio: float):
     return (torch.rand(length) < ratio).int()
+
+def str2bool(txt: str | list[str] | Any) -> bool | list[bool] | Any:
+    if isinstance(txt, list):
+        return [str2bool(t) for t in txt]
+    
+    if isinstance(txt, str):
+        if txt.lower().strip() == 'true':
+            return True
+        if txt.lower().strip() == 'false':
+            return False
+    
+    return txt
+
+def params2dict(params: dict) -> dict:
+    parser = argparse.ArgumentParser()
+
+    # add args to the argparse
+    for k, v in params.items():
+        if k[0] == '_':
+            continue
+        if isinstance(v, list):
+            parser.add_argument(f'--{k}', type=type(v[0]) if not isinstance(v[0], bool) else str, default=v, required=False, nargs='+')
+            continue
+        parser.add_argument(f'--{k}', type=type(v) if not isinstance(v, bool) else str, default=v, required=False)
+
+    # update the parsed arguments
+    args = vars(parser.parse_args())
+    params.update(args)
+    for k, v in params.items():
+        params[k] = str2bool(v)
+    return params
 
 atexit.register(_clean_up)

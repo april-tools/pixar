@@ -26,6 +26,7 @@ class RenderConfig:
     path: str = 'storage/pixel-base'
     rgb: bool = True
     mask_ratio: float = 0.25
+    binary: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)

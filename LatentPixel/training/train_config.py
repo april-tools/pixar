@@ -32,7 +32,7 @@ class ExpConfig:
     coder_path: str | PathLike = ''
     render_path: str | PathLike = RENDER_PATH
     checkpoint_path: str | PathLike = CHECK_PATH
-    dataset_paths: list[str | PathLike] = field(default_factory=list) 
+    dataset_paths: list[str | PathLike] = field(default_factory=list, default=['']) 
     seed: int = SEED
     exp_type: str = 'debug'
     task: str = 'lpixel_pretrain'
@@ -63,8 +63,8 @@ class ExpConfig:
     pixels_per_patch: int = 16
     compress_ratio: int = 8
     font_file: str = 'GoNotoCurrent.ttf'
-    image_size: list[int] = field(default_factory=list) 
-    latent_size: list[int] = field(default_factory=list) 
+    image_size: list[int] = field(default_factory=list, default=[3, 16, 8464]) 
+    latent_size: list[int] = field(default_factory=list, default=[3, 16, 8464]) 
     
     torch_compile: bool = False # whether to compile the model into a static graph (refer to pytorch 2.0)
     dynamic_shape: bool = False # whether to use dynamic input shape while compiling
@@ -322,10 +322,7 @@ def get_config() -> ExpConfig:
         if k[0] == '_':
             continue
         if isinstance(v, list):
-            if k == 'dataset_paths':
-                parser.add_argument(f'--{k}', type=str, default=v, required=False, nargs='+')
-            elif k == 'image_size' or k == 'latent_size':
-                parser.add_argument(f'--{k}', type=int, default=v, required=False, nargs='+')
+            parser.add_argument(f'--{k}', type=type(v[0]), default=v, required=False, nargs='+')
             continue
         parser.add_argument(f'--{k}', type=type(v), default=v, required=False)
     args = parser.parse_args()
