@@ -49,6 +49,7 @@ class TGraph:
     _patch_mask: torch.Tensor | None = None
     _num_text_patches: int | list[int] | None = None
     _num_gen_patches: int | list[int] | None = None
+    _half: bool = False
     labels: torch.Tensor | None = None
     loss: torch.Tensor | None = None
     device: Any = None
@@ -88,9 +89,12 @@ class TGraph:
     
     @property
     def value(self) -> torch.Tensor:
-        if self.device is None:
-            return self._value
-        return self._value.to(self.device)
+        processed = self._value
+        if self.device is not None:
+            processed = self._value.to(self.device)
+        if self._half:
+            processed = processed.half()
+        return processed
 
     @property
     def patch_size(self) -> int:
@@ -513,3 +517,11 @@ class TGraph:
             self.text = pytesseract.image_to_string(imgs)
 
         return self.text
+
+    def half(self) -> TGraph:
+        self._half = True
+        return self
+
+    def float(self) -> TGraph:
+        self._half = False
+        return self

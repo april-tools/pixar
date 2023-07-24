@@ -5,6 +5,7 @@ from os import PathLike
 import torch
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel
+from torchvision.transforms import PILToTensor, Compose, ToPILImage, Normalize
 
 from transformers import PreTrainedModel, PretrainedConfig
 from diffusers.models import AutoencoderKL
@@ -17,13 +18,16 @@ from transformers.utils import logging
 from LatentPixel.text_graph import TGraph
 
 from ..text_graph import TGraph
-from ..config import ModelType
+from ..config import LATENT_DEFAULT_MEAN, LATENT_DEFAULT_STD
 from .latent_model import LatentModel
 
 logger = logging.get_logger(__name__)
 
 
 class LPixelForMLM(LatentModel):
+
+    _latent_norm = Compose([Normalize(LATENT_DEFAULT_MEAN, LATENT_DEFAULT_STD)])
+    _inv_latent_norm = Compose([Normalize(- LATENT_DEFAULT_MEAN / LATENT_DEFAULT_STD, 1 / LATENT_DEFAULT_STD)])
 
     def load_coder(self, path: str | PathLike) -> nn.Module:
         if path is None or len(path) == 0:
@@ -49,10 +53,14 @@ class LPixelForMLM(LatentModel):
         self.coder.save_pretrained(path)
     
     def load_backbone(self, path: str | PathLike) -> nn.Module:
+        if path is None or len(path) == 0:
+            print('No backbone')
+            return None
         pixel_config = PIXELConfig.from_pretrained(path)
         pixel_config.image_size = self.latent_size[1:]
         pixel_config.patch_size = self.latent_size[1]
         pixel_config.num_channels = self.latent_size[0]
+        pixel_config.norm_pix_loss = False
         self.backbone_config = pixel_config
         self.backbone: PIXELForPreTraining = PIXELForPreTraining.from_pretrained(path, config=pixel_config, ignore_mismatched_sizes=True)
         self.backbone.vit.embeddings.gen_mode = True
@@ -107,7 +115,7 @@ class LPixelForMLM(LatentModel):
     
     def latent_forward(self, img: TGraph) -> TGraph:
         output: PIXELForPreTrainingOutput = self.backbone(
-            pixel_values=img.value if self.coder is not None else img.to_pixel(),
+            pixel_values=self._latent_norm(img.value) if self.coder is not None else img.to_pixel(),
             attention_mask=img.attention_mask,
             patch_mask=img.patch_mask
             )
@@ -115,11 +123,11 @@ class LPixelForMLM(LatentModel):
             return TGraph.from_pixel(output, True, patch_size=self.latent_size[1]).unsquarelize()
         
         if isinstance(self.backbone, PIXELForPreTraining):
-            logits = self.backbone.unnormalize_pred(img._value, output.logits)
-            logits = self.backbone.unpatchify(logits)
+            logits = self.backbone.unpatchify(output.logits)
+            logits = self._inv_latent_norm(logits)
         else:
-            logits = self.backbone.module.unnormalize_pred(img._value, output.logits)
-            logits = self.backbone.module.unpatchify(logits)
+            logits = self.backbone.module.unpatchify(output.logits)
+            logits = self._inv_latent_norm(logits)
 
         return TGraph.from_value(
             value=logits,
