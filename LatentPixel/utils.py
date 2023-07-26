@@ -319,8 +319,8 @@ def copy_list(origin: list) -> list:
         return [_copy_list(o) for o in origin]
     return _copy_list(origin)
 
-def rand_mask(length: int, ratio: float):
-    return (torch.rand(length) < ratio).int()
+def rand_mask(shape: torch.Size, ratio: float):
+    return (torch.rand(shape) < ratio).int()
 
 def str2bool(txt: str | list[str] | Any) -> bool | list[bool] | Any:
     if isinstance(txt, list):

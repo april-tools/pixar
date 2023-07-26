@@ -1,5 +1,6 @@
 from .modeling import (
     LPixelForMLM,
+    LatentGPT2
 )
 from .utils import (
     init_render,
@@ -32,4 +33,5 @@ __all__ = [
     'EditDistance'
     'params2dict'
     'timeit'
+    'LatentGPT2'
 ]

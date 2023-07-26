@@ -176,7 +176,7 @@ class TGraph:
     def init_patch_mask(self, mode: str, num: int = 1, idx: int = -1, ratio: float = 0.25) -> torch.Tensor:
         match mode:
             case 'rand':
-                self._patch_mask = rand_mask(get_num_patches(), ratio)
+                self._patch_mask = rand_mask(self.attention_mask.shape, ratio)
             case 'span':
                 self._patch_mask = get_span_mask(self.num_text_patches)
             case 'end':
