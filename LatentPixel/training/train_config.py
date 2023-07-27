@@ -239,7 +239,7 @@ class ExpConfig:
 
     @property
     def distributed(self) -> bool:
-        return self.num_gpu > 1
+        return True
 
     def model_path(self, name: str) -> str | PathLike:
         path = join(
