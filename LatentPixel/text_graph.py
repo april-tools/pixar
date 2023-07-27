@@ -50,7 +50,8 @@ class TGraph:
     _num_text_patches: int | list[int] | None = None
     _num_gen_patches: int | list[int] | None = None
     _half: bool = False
-    labels: torch.Tensor | None = None
+    _predicts: torch.Tensor | None = None
+    _labels: torch.Tensor | None = None
     loss: torch.Tensor | None = None
     device: Any = None
     text: str | list[str] | None = None
@@ -88,6 +89,12 @@ class TGraph:
         return init_render(config, num_worker=num_workers)
     
     @property
+    def predcits(self) -> torch.Tensor:
+        if self._predicts is None:
+            self._predicts = self._value.argmax(-1)
+        return self._predicts
+    
+    @property
     def value(self) -> torch.Tensor:
         processed = self._value
         if self.device is not None:
@@ -95,6 +102,21 @@ class TGraph:
         if self._half:
             processed = processed.half()
         return processed
+    
+    @property
+    def labels(self) -> torch.Tensor:
+        return self.process(self._labels)
+    
+    @labels.setter
+    def labels(self, labels: torch.Tensor) -> None:
+        self._labels = labels
+    
+    def process(self, value: torch.Tensor) -> torch.Tensor:
+        if self.device is not None:
+            value = value.to(self.device)
+        if self._half:
+            value = value.half()
+        return value
 
     @property
     def patch_size(self) -> int:
@@ -102,7 +124,7 @@ class TGraph:
             return self._patch_size
         self._patch_size = get_patch_size() # use the default patch_size from render
         return self._patch_size
-    
+        
     @patch_size.setter
     def patch_size(self, size: int) -> None:
         self._patch_size = size
@@ -123,9 +145,7 @@ class TGraph:
     @property
     @torch.no_grad()
     def attention_mask(self) -> torch.Tensor:
-        if self.device is None:
-            return self._get_attention_mask()
-        return self._get_attention_mask().to(self.device)
+        return self.process(self._get_attention_mask())
     
     @attention_mask.setter
     def attention_mask(self, mask: torch.Tensor) -> None:
@@ -208,9 +228,7 @@ class TGraph:
     
     @property
     def patch_mask(self):
-        if self.device is None:
-            return self._get_patch_mask()
-        return self._get_patch_mask().to(self.device)
+        return self.process(self._get_patch_mask())
     
     @patch_mask.setter
     def patch_mask(self, mask: torch.Tensor) -> None:
@@ -387,7 +405,7 @@ class TGraph:
         return self
     
     @classmethod
-    def from_pixel_img(cls, img: torch.Tensor, do_clip: bool = False, attention_mask: torch.Tensor | None = None, patch_mask: torch.Tensor | None = None) -> None:
+    def from_pixel_img(cls, img: torch.Tensor, do_clip: bool = False, attention_mask: torch.Tensor | None = None, patch_mask: torch.Tensor | None = None) -> TGraph:
         graph = cls()
         graph._value = cls._inv_pix_normalizer(img)
 

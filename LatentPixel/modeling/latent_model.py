@@ -21,12 +21,14 @@ class LatentModel(nn.Module):
             coder_path: str | os.PathLike | None = None,
             backbone_path: str | os.PathLike | None = None,
             img_size: tuple[int, int, int] | None = None,
-            latent_size: tuple[int, int, int] | None = None
+            latent_size: tuple[int, int, int] | None = None,
+            num_labels: int | None = None
             ) -> None:
         super().__init__()
 
         self.img_size = img_size
         self.latent_size = latent_size
+        self.num_labels = num_labels
         
         if self.img_size is None:
             self.img_size = self.latent_size
@@ -55,7 +57,7 @@ class LatentModel(nn.Module):
         
         return TGraph.from_value(
             value=latent,
-            patch_size=self.latent_size[1],
+            patch_size=self.patch_size,
             attention_mask=img.attention_mask,
             patch_mask=img.patch_mask,
             num_text_patches=img.patch_mask,

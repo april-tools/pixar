@@ -35,7 +35,7 @@ from pixel import PIXELLayer, PIXELEmbeddings
 import wandb
 
 from .train_config import ExpConfig
-from ..modeling import LatentModel, LPixelForMLM
+from ..modeling import LatentModel, LPixelForMLM, LatentGPT2
 from ..utils import timeit, init_render
 
 _progress_bar: tqdm = None
@@ -253,6 +253,21 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel, dict]:
             output(f'Latent image size: {config.latent_size}')
             output(f'Latent patch size: {config.latent_patch_size}')
             model = LPixelForMLM(
+                coder_path=config.coder_path,
+                backbone_path=config.backbone_path,
+                img_size=config.image_size,
+                latent_size=config.latent_size
+            )
+            if config.stage == 1:
+                model.init_connection_layers()
+                model.delete_unused_layers()
+            elif config.stage == 2:
+                model.delete_unused_layers()
+        case 'LatentGPT2':
+            output(f'Latent image size: {config.latent_size}')
+            output(f'Latent patch size: {config.latent_patch_size}')
+            output('init latent gpt2 model')
+            model = LatentGPT2(
                 coder_path=config.coder_path,
                 backbone_path=config.backbone_path,
                 img_size=config.image_size,

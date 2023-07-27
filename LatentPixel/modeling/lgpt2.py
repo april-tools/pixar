@@ -8,10 +8,12 @@ from transformers.models.gpt2.modeling_gpt2 import GPT2Block
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers import logging
 from diffusers import AutoencoderKL
+from torch.nn.parallel import DistributedDataParallel
 
 from LatentPixel.text_graph import TGraph
 
 from .latent_model import LatentModel
+from ..utils import mask2img
 
 
 logger = logging.get_logger(__name__)
@@ -36,11 +38,16 @@ class GPT2ForPatchCausalInference(GPT2Model):
         self.device_map = None
         self.gradient_checkpointing = False
         
-        self.in_proj = nn.Conv2d(config.num_channel, self.embed_dim, config.patch_size, stride=config.patch_size, bias=False)
-        self.out_proj = nn.ConvTranspose2d(config.num_channel, self.embed_dim, config.patch_size, stride=config.patch_size, bias=False)
+        self.config = config
+        self.init_projection()
 
         # Initialize weights and apply final processing
         self.post_init()
+
+    def init_projection(self) -> None:
+        config = self.config
+        self.in_proj = nn.Conv2d(config.num_channel, self.embed_dim, config.patch_size, stride=config.patch_size, bias=False)
+        self.out_proj = nn.ConvTranspose2d(self.embed_dim, config.num_channel, config.patch_size, stride=config.patch_size, bias=False)
         
     def forward(
         self,
@@ -58,7 +65,10 @@ class GPT2ForPatchCausalInference(GPT2Model):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
-        inputs_embeds = self.in_proj(inputs_embeds).squeeze().transpose(1, 2)
+        # map the input_embeds into vectors saperated by patches
+        inputs_embeds = self.in_proj(inputs_embeds)
+        inputs_embeds = inputs_embeds.flatten(2).transpose(1, 2)
+
         # >>>>>>> below are copied from GPT2Model
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -231,9 +241,8 @@ class GPT2ForPatchCausalInference(GPT2Model):
             )
             
         # <<< before are copied from GPT2
-        
-        hidden_states = self.out_proj(hidden_states.transpose(1, 2).unsqueeze(2))
-        
+        hidden_states = hidden_states.transpose(1, 2).unsqueeze(2)
+        hidden_states = self.out_proj(hidden_states)
 
         return BaseModelOutputWithPastAndCrossAttentions(
             last_hidden_state=hidden_states,
@@ -251,30 +260,38 @@ class LatentGPT2(LatentModel):
         setattr(gpt2_config, 'num_channel', self.num_latent_channel)
         setattr(gpt2_config, 'patch_size', self.latent_patch_size)
         
-        gpt2: GPT2ForPatchCausalInference = GPT2ForPatchCausalInference.from_pretrained(path, config=gpt2_config)
+        gpt2: GPT2ForPatchCausalInference = GPT2ForPatchCausalInference.from_pretrained(path, config=gpt2_config, ignore_mismatched_sizes=True)
         self.backbone = gpt2
         
         return gpt2
     
     def save_backbone(self, path: str | PathLike) -> None:
-        self.backbone.save_pretrained(path)
-    
+        if isinstance(self.backbone, GPT2ForPatchCausalInference):
+            self.backbone.save_pretrained(path)
+        elif isinstance(self.backbone, DistributedDataParallel):
+            self.backbone.module.save_pretrained(path)
+        else:
+            raise NotImplementedError(f'Saving for {type(self.backbone)} has not been implemented!')
+        
+        print(f'gpt2 backbone saved to {path}')
+            
     def latent_forward(self, img: TGraph) -> TGraph:
-        img_values = self._latent_norm(img.unsquarelize()._value) if self.coder else img.unsquarelize().to_pixel()
+        img_values = self._latent_norm(img.unsquarelize().value) if self.coder else img.unsquarelize().to_pixel()
         output: BaseModelOutputWithPastAndCrossAttentions = self.backbone.forward(
             attention_mask=img.attention_mask,
             inputs_embeds=img_values
         )
         pred = output.last_hidden_state
+        attention_mask = mask2img(img.attention_mask, self.latent_patch_size).unsqueeze(1)
         loss = (pred - img_values) ** 2
-        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
-        loss = (loss * img.attention_mask).sum() / img.attention_mask.sum()  # mean loss on removed patches
+        print('loss', loss.shape)
+        print('attention_mask', attention_mask.shape)
+        loss = (loss * attention_mask).sum() / attention_mask.sum()  # mean loss on removed patches
         
         if self.coder is None:
             result = TGraph.from_pixel_img(pred, True, img.attention_mask, img.patch_mask)
             result.loss = loss
             return result
-            
         
         latent_values = self._inv_latent_norm(pred)
 
@@ -294,6 +311,12 @@ class LatentGPT2(LatentModel):
         ])
     
     def init_connection_layers(self) -> None:
-        self.in_proj = nn.Conv2d(self.num_latent_channel, self.backbone.config.embed_dim, self.patch_size, stride=self.patch_size, bias=False)
-        self.out_proj = nn.ConvTranspose2d(self.num_latent_channel, self.backbone.config.embed_dim, self.patch_size, stride=self.patch_size, bias=False)
+        self.backbone.init_projection()
         return
+    
+    def delete_unused_layers(self) -> None:
+        if self.coder is None:
+            print('No unused layers to delete')
+        print('delete the decoder')
+        del self.coder.decoder
+        self.coder.decoder = None

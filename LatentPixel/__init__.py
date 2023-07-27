@@ -1,6 +1,7 @@
 from .modeling import (
     LPixelForMLM,
-    LatentGPT2
+    LatentGPT2,
+    LPixelForClassification
 )
 from .utils import (
     init_render,
@@ -34,4 +35,5 @@ __all__ = [
     'params2dict'
     'timeit'
     'LatentGPT2'
+    'LPixelForClassification'
 ]

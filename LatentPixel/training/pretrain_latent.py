@@ -21,7 +21,8 @@ from ..utils import init_render, timeit, get_num_patches
 from ..dataprocess import get_pixel_pretrain_dataloader
 from ..modeling import (
     LatentModel,
-    LPixelForMLM
+    LPixelForMLM,
+    LatentGPT2
 )
 from ..config import (
     ModelType

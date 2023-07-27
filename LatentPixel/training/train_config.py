@@ -6,10 +6,11 @@ from time import strftime
 import argparse
 from typing import Any, TypeVar
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 import json
 
 from ..config import RenderConfig
+from ..utils import params2dict
 
 import wandb
 
@@ -26,13 +27,13 @@ WANDB_TEAM = 'mlp-awesome'
 class ExpConfig:
     
     # you can use these fields as command line arguments
-    model: str = 'LPixelForMLM'
+    model: str = 'LPixelForMLM' # or LatentGPT2
     init_path: str | PathLike = ''
     backbone_path: str | PathLike = ''
     coder_path: str | PathLike = ''
     render_path: str | PathLike = RENDER_PATH
     checkpoint_path: str | PathLike = CHECK_PATH
-    dataset_paths: list[str | PathLike] = field(default_factory=list, default=['']) 
+    dataset_paths: list[str | PathLike] = field(default_factory=lambda: ['']) 
     seed: int = SEED
     exp_type: str = 'debug'
     task: str = 'lpixel_pretrain'
@@ -63,8 +64,8 @@ class ExpConfig:
     pixels_per_patch: int = 16
     compress_ratio: int = 8
     font_file: str = 'GoNotoCurrent.ttf'
-    image_size: list[int] = field(default_factory=list, default=[3, 16, 8464]) 
-    latent_size: list[int] = field(default_factory=list, default=[3, 16, 8464]) 
+    image_size: list[int] = field(default_factory=lambda: [3, 16, 8464]) 
+    latent_size: list[int] = field(default_factory=lambda: [3, 16, 8464]) 
     
     torch_compile: bool = False # whether to compile the model into a static graph (refer to pytorch 2.0)
     dynamic_shape: bool = False # whether to use dynamic input shape while compiling
@@ -314,22 +315,22 @@ def init_wandb(config: ExpConfig) -> None:
 # if the experiment continues from the past, use the old config, otherwise 
 # init a new one
 def get_config() -> ExpConfig:
-    fake_config = ExpConfig()
-    parser = argparse.ArgumentParser(description='soft-reasoning training scripts')
+    # fake_config = ExpConfig()
+    # parser = argparse.ArgumentParser(description='soft-reasoning training scripts')
     
-    # add args to the argparse
-    for k, v in fake_config.__dict__.items():
-        if k[0] == '_':
-            continue
-        if isinstance(v, list):
-            parser.add_argument(f'--{k}', type=type(v[0]), default=v, required=False, nargs='+')
-            continue
-        parser.add_argument(f'--{k}', type=type(v), default=v, required=False)
-    args = parser.parse_args()
+    # # add args to the argparse
+    # for k, v in fake_config.__dict__.items():
+    #     if k[0] == '_':
+    #         continue
+    #     if isinstance(v, list):
+    #         parser.add_argument(f'--{k}', type=type(v[0]), default=v, required=False, nargs='+')
+    #         continue
+    #     parser.add_argument(f'--{k}', type=type(v), default=v, required=False)
+    # args = parser.parse_args()
     
-    # check whether it's a continued job
-    exp_config = ExpConfig.from_checkpoint(args.init_path)
-    if exp_config is None or args.init:
-        exp_config = ExpConfig(**vars(args))
+    # # check whether it's a continued job
+    # exp_config = ExpConfig.from_checkpoint(args.init_path)
+    # if exp_config is None or args.init:
+    #     exp_config = ExpConfig(**vars(args))
         
-    return exp_config
+    return ExpConfig(**params2dict(asdict(ExpConfig())))
