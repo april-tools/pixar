@@ -90,8 +90,10 @@ class TGraph:
     
     @property
     def predcits(self) -> torch.Tensor:
+        if isinstance(self.labels, torch.DoubleTensor):
+            return self.labels
         if self._predicts is None:
-            self._predicts = self._value.argmax(-1)
+            self._predicts = self.value.argmax(-1)
         return self._predicts
     
     @property
@@ -140,7 +142,6 @@ class TGraph:
         masks = [get_attention_mask(num, get_num_patches()).unsqueeze(0) for num in self.num_text_patches]
         self._attention_mask = torch.cat(masks, dim=0)
         return self._attention_mask
-    
     
     @property
     @torch.no_grad()
@@ -305,13 +306,16 @@ class TGraph:
     
     # paint the masked patchs with color or noise
     @torch.no_grad()
-    def paint_mask(self, color: str | tuple[float, float, float] = 'green', alpha: float = 0.1) -> TGraph:
+    def paint_mask(self, color: str | tuple[float, float, float] = 'green', alpha: float = 0.1, mask: torch.Tensor = None) -> TGraph:
         self.unsquarelize()
                 
         height = self.patch_size
         width = height * get_num_patches()
 
-        mask = mask2img(self.attention_mask * self.patch_mask, self.patch_size)
+        if mask is None:
+            mask = mask2img(self.attention_mask * self.patch_mask, self.patch_size)
+        else:
+            mask = mask2img(mask, self.patch_size)
         backcolor = color_image(color, height, width)
 
         if mask.dim() == 3:
@@ -324,12 +328,13 @@ class TGraph:
         return self
     
     @torch.no_grad()
-    def circle_mask(self, color: str | tuple[float, float, float] = 'green', alpha: float = 0.1, width: int = 2) -> TGraph:
+    def circle_mask(self, color: str | tuple[float, float, float] = 'green', alpha: float = 0.1, width: int = 2, mask: torch.Tensor = None) -> TGraph:
         self.unsquarelize()
         height = self.patch_size
         w = height * get_num_patches()
 
-        mask = self.attention_mask * self.patch_mask
+        if mask is None:
+            mask = self.attention_mask * self.patch_mask
         mask = mask2img(mask, self.patch_size)
         if mask.dim() == 3:
             mask = mask.unsqueeze(1)

@@ -13,9 +13,11 @@ PIXEL_DEFAULT_IMAGE_STD = torch.tensor([0.5, 0.5, 0.5])
 LATENT_DEFAULT_MEAN = torch.tensor([4.2295, 3.9307, -0.6823, -2.6319])
 LATENT_DEFAULT_STD = torch.tensor([4.3281, 3.4913, 3.0322, 3.3330])
 
+
 class ModelType(Enum):
     SD = AutoencoderKL  # represents the VQGAN from Stable Diffusion
     PIXEL = PIXELForPreTraining
+
 
 @dataclass
 class RenderConfig:

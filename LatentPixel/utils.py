@@ -35,7 +35,7 @@ def seed_everyting(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
 
-def _rend_once(text: str) -> Encoding:
+def _rend_once(text: str | tuple[str, str]) -> Encoding:
     global binary, render
     result = render(text)
     if not render.rgb:
@@ -46,7 +46,7 @@ def _rend_once(text: str) -> Encoding:
     return result
 
 def _stand_alone_render(text: str | list[str]) -> Encoding | list[Encoding]:
-    if isinstance(text, str):
+    if isinstance(text, str) or isinstance(text, tuple):
         return _rend_once(text)
     
     return [_rend_once(txt) for txt in text]
@@ -59,7 +59,7 @@ def _render_process() -> None:
         _img_queue.put(img, timeout=30)
 
 def _parallel_rend(text: str | list[str]) -> Encoding | list[Encoding]:
-    if isinstance(text, str):
+    if isinstance(text, str) or isinstance(text, tuple):
         _txt_queue.put(text)
         return _img_queue.get(block=True, timeout=30)
     else:

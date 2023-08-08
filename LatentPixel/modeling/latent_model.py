@@ -55,7 +55,7 @@ class LatentModel(nn.Module):
         with torch.no_grad():
             latent = self.coder.encode(pixel_values).latent_dist.mode()
         
-        return TGraph.from_value(
+        encoded = TGraph.from_value(
             value=latent,
             patch_size=self.patch_size,
             attention_mask=img.attention_mask,
@@ -63,6 +63,9 @@ class LatentModel(nn.Module):
             num_text_patches=img.patch_mask,
             num_gen_patches=img.num_gen_patches
         )
+        encoded.labels = img.labels
+        
+        return encoded
 
     @torch.no_grad()
     def decode(self, img: TGraph) -> TGraph:
@@ -73,6 +76,7 @@ class LatentModel(nn.Module):
             attention_mask=img.attention_mask,
             patch_mask=img.patch_mask
         )
+        result.loss = img.loss
         result.patch_size = self.patch_size
 
         return result
@@ -147,6 +151,9 @@ class LatentModel(nn.Module):
                 return
             for param in self.coder.parameters():
                 param.requires_grad = False
+                
+    def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
+        raise NotImplementedError('All child module should define this function within it')
 
     @property
     def has_decoder(self) -> bool:

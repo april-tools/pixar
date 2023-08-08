@@ -98,6 +98,7 @@ class LPixelForMLM(LatentModel):
         else:
             print('There is no coder for this model, skip the deletion')
         
+        
 class LPixelForClassification(LatentModel):
 
     def load_backbone(self, path: str | PathLike) -> nn.Module:
@@ -150,4 +151,11 @@ class LPixelForClassification(LatentModel):
     def init_connection_layers(self) -> None:
         print('Reinitialize the vit embedding layer')
         self.backbone.vit.embeddings = ViTEmbeddings(self.backbone.config)
-        return
+
+    def delete_unused_layers(self) -> None:
+        if self.coder is not None:
+            del self.coder.decoder
+            self.coder.decoder = None
+            print('The decoder of the coder is deleted')
+        else:
+            print('There is no coder for this model, skip the deletion')

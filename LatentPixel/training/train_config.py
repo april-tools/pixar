@@ -3,7 +3,7 @@ import os
 from os import PathLike, makedirs
 from os.path import join, exists
 from time import strftime
-import argparse
+from collections import defaultdict
 from typing import Any, TypeVar
 
 from dataclasses import dataclass, field, asdict
@@ -11,6 +11,13 @@ import json
 
 from ..config import RenderConfig
 from ..utils import params2dict
+from ..metrics import (
+    MC,
+    Accuracy,
+    F1,
+    PC,
+    SC
+)
 
 import wandb
 
@@ -20,6 +27,19 @@ CHECK_PATH = 'storage/checkpoints'
 WANDB_PROJECT = 'PIXEL++'
 WANDB_TEAM = 'mlp-awesome'
 
+# glue metrics
+GLUE_META = [
+    ('cola', ([MC], 2)),
+    ('sst2', ([Accuracy], 2)),
+    ('mrpc', ([Accuracy, F1], 2)),
+    ('stsb', ([PC, SC], -1)),
+    ('qqp', ([Accuracy, F1], 2)),
+    ('mnli', ([Accuracy], 3)),
+    ('qnli', ([Accuracy], 2)),
+    ('rte', ([Accuracy], 2)),
+    ('wnli', ([Accuracy], 2))
+]
+
 # experiemnt hyperparameters and their default values
 # fields not begin with _ are arguments
 # all of these fields will update to wandb
@@ -27,7 +47,7 @@ WANDB_TEAM = 'mlp-awesome'
 class ExpConfig:
     
     # you can use these fields as command line arguments
-    model: str = 'LPixelForMLM' # or LatentGPT2
+    model: str = 'LPixelForMLM' # or LatentGPT2 or LPixelForClassification
     init_path: str | PathLike = ''
     backbone_path: str | PathLike = ''
     coder_path: str | PathLike = ''
@@ -37,6 +57,8 @@ class ExpConfig:
     seed: int = SEED
     exp_type: str = 'debug'
     task: str = 'lpixel_pretrain'
+    finetune_task: str = ''
+    glue_task: str = ''
     stage: int = 1
     optim: str = 'AdamW'
     scheduler: str = 'CosineAnnealingLR'
@@ -106,6 +128,32 @@ class ExpConfig:
     _device_id: int = -1
     _local_world_size: int = -1
     _render_config: dict = None
+    _metrics: defaultdict = defaultdict(list)
+    _max_metrics: defaultdict = defaultdict(-99999999999)
+    _max_metrics_step: defaultdict = defaultdict(-1)
+    _min_metrics: defaultdict = defaultdict(9999999999999)
+    _min_metrics_step: defaultdict = defaultdict(-1)
+    
+    def update_metric(self, name: str, value: float):
+        self._metrics[name].append(value)
+        print(f'{name}: {value} at step {self.current_step}')
+        
+        if value > self._max_metrics[name]:
+            self._max_metrics[name] = value
+            self._max_metrics_step = self.current_step
+            print(f'Maximum value of {name} {value} updated at step {self.current_step}')
+            
+        if value < self._min_metrics[name]:
+            self._min_metrics[name] = value
+            self._min_metrics_step = self.current_step
+            print(f'Minimum value of {name} {value} updated at step {self.current_step}')
+
+    @property
+    def num_labels(self) -> int:
+        if self.finetune_task != 'glue':
+            raise KeyError(f'{self.finetune_task} is not a classfication task')
+                
+        return dict(GLUE_META)[self.glue_task][1]
 
     @property
     def render_config(self) -> RenderConfig:
@@ -315,22 +363,6 @@ def init_wandb(config: ExpConfig) -> None:
 # if the experiment continues from the past, use the old config, otherwise 
 # init a new one
 def get_config() -> ExpConfig:
-    # fake_config = ExpConfig()
-    # parser = argparse.ArgumentParser(description='soft-reasoning training scripts')
-    
-    # # add args to the argparse
-    # for k, v in fake_config.__dict__.items():
-    #     if k[0] == '_':
-    #         continue
-    #     if isinstance(v, list):
-    #         parser.add_argument(f'--{k}', type=type(v[0]), default=v, required=False, nargs='+')
-    #         continue
-    #     parser.add_argument(f'--{k}', type=type(v), default=v, required=False)
-    # args = parser.parse_args()
-    
-    # # check whether it's a continued job
-    # exp_config = ExpConfig.from_checkpoint(args.init_path)
-    # if exp_config is None or args.init:
-    #     exp_config = ExpConfig(**vars(args))
+    # build the argument parser and parse the commandline arguments
         
     return ExpConfig(**params2dict(asdict(ExpConfig())))

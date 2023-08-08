@@ -18,9 +18,11 @@ from .text_graph import (
     TGraph
 )
 from .dataprocess import (
-    get_pixel_pretrain_dataloader
+    get_pixel_pretrain_dataloader,
+    get_glue_dataset
 )
 from .metrics import EditDistance
+from .training import GLUE_META
 
 __all__ = [
     'ModelType'
@@ -36,4 +38,6 @@ __all__ = [
     'timeit'
     'LatentGPT2'
     'LPixelForClassification'
+    'get_glue_dataset'
+    'GLUE_META'
 ]

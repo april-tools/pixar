@@ -282,11 +282,9 @@ class LatentGPT2(LatentModel):
             inputs_embeds=img_values
         )
         pred = output.last_hidden_state
-        attention_mask = mask2img(img.attention_mask, self.latent_patch_size).unsqueeze(1)
-        loss = (pred - img_values) ** 2
-        print('loss', loss.shape)
-        print('attention_mask', attention_mask.shape)
-        loss = (loss * attention_mask).sum() / attention_mask.sum()  # mean loss on removed patches
+        attention_mask = mask2img(img.attention_mask, self.latent_patch_size).unsqueeze(1)[..., self.latent_patch_size:]
+        loss = (pred[..., :-self.latent_patch_size] - img_values[..., self.latent_patch_size:]) ** 2
+        loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_channel)  # mean loss on removed patches
         
         if self.coder is None:
             result = TGraph.from_pixel_img(pred, True, img.attention_mask, img.patch_mask)
@@ -311,12 +309,35 @@ class LatentGPT2(LatentModel):
         ])
     
     def init_connection_layers(self) -> None:
+        print('init the connection layers')
         self.backbone.init_projection()
         return
     
     def delete_unused_layers(self) -> None:
+        if self.backbone.wte is not None:
+            print('Delete the embedding layer')
+            del self.backbone.wte
+            self.backbone.wte = None
         if self.coder is None:
             print('No unused layers to delete')
+            return
         print('delete the decoder')
         del self.coder.decoder
         self.coder.decoder = None
+
+    def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
+        prompt.unsquarelize()
+        if self.coder is not None:
+            encoded = self.encode(prompt)
+        else:
+            encoded = prompt
+            
+        for idx in range(num_new_patches):
+            print(f'generate the {idx} th patch')
+            generated = self.latent_forward(encoded)
+            encoded._value[..., gen_idx * self.latent_patch_size: (gen_idx + 1) * self.latent_patch_size] = generated._value[..., (gen_idx - 1) * self.latent_patch_size: gen_idx * self.latent_patch_size] 
+            gen_idx += 1
+            if gen_idx > 528:
+                break
+        
+        return encoded

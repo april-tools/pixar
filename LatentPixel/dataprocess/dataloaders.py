@@ -1,5 +1,6 @@
 import os
 from functools import partial
+from collections import defaultdict
 import random
 
 import torch
@@ -7,6 +8,8 @@ from torch.utils.data import DataLoader
 from ..text_graph import TGraph
 from ..config import ModelType, RenderConfig
 from ..utils import seed_everyting, timeit
+from ..training.train_config import GLUE_META, ExpConfig
+from ..metrics import Metric
 from tqdm import tqdm
 import numpy as np
 
@@ -58,6 +61,29 @@ def collate_text(batch: dict, min_len: int, max_len: int | None = None) -> list[
         chunked = results
 
     return {'text': chunked}
+
+def collate_glue(batch: dict) -> TGraph:
+    merged = defaultdict(list)
+    for sample in batch:
+        for k, v in sample.items():
+            merged[k].append(v)
+    batch = merged
+    label = batch['label']
+    if len(batch) == 4:
+        keys = list(batch.keys())
+        text = list(zip(batch[keys[0]], batch[keys[1]]))
+    elif len(batch) == 3:
+        key = list(batch.keys())[0]
+        text = batch[key]
+    else:
+        raise ValueError(f'GLUE dataset should be 3 or 4 fields, but got {len(batch)} fields')
+    
+    tgraph = TGraph.from_text(text)
+    tgraph.labels = torch.tensor(label)
+    assert isinstance(tgraph.labels, torch.LongTensor) or isinstance(tgraph.labels, torch.DoubleTensor)
+    tgraph.attention_mask   # init the attention mask
+    
+    return tgraph
 
 def get_pixel_pretrain_dataloader(
         paths: list[str | os.PathLike],
@@ -117,3 +143,58 @@ def get_pixel_pretrain_dataloader(
     )
 
     return loader
+
+
+def get_glue_dataset(
+        task: str,
+        config: ExpConfig | None = None,
+        sub_size: int | None = None,
+        mp_workers: int | None = None,
+        seed: int | None = None,
+        render_config: RenderConfig | None = None,
+        rank: int = 0,
+        world_size: int = 1
+    ) -> tuple[DataLoader, list[DataLoader], list[Metric], int]: # return the train dataloader, validation dataloaders, the metrics, and the number of labels
+    if config is not None:
+        sub_size = config.sub_size
+        mp_workers = config.mp_workers
+        seed = config.seed
+        render_config = config.render_config
+        rank = config.rank
+        world_size = config.world_size
+    
+    metrics = dict(GLUE_META)[task][0]
+    num_labels = dict(GLUE_META)[task][1]
+    
+    train_data = load_dataset('glue', task, split='train')
+    if task == 'mnli':
+        val_datas = [load_dataset('glue', 'mnli', split='validation_matched'), load_dataset('glue', 'mnli', split='validation_mismatched')]
+    else:
+        val_datas = [load_dataset('glue', task, split='validation')]
+    
+    train_data = split_dataset_by_node(train_data, rank=rank, world_size=world_size)
+    val_datas = [split_dataset_by_node(data, rank=rank, world_size=world_size) for data in val_datas]
+    
+    train_loader = DataLoader(
+        dataset=train_data,
+        batch_size=sub_size,
+        num_workers=mp_workers,
+        prefetch_factor=4,
+        collate_fn=collate_glue,
+        worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
+        drop_last=False
+    )
+    
+    val_loaders = [
+        DataLoader(
+            dataset=data,
+            batch_size=sub_size,
+            num_workers=mp_workers,
+            prefetch_factor=4,
+            collate_fn=collate_glue,
+            worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
+            drop_last=False
+        ) for data in val_datas
+    ]
+    
+    return train_loader, val_loaders, metrics, num_labels
