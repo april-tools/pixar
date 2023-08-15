@@ -51,6 +51,7 @@ class ExpConfig:
     init_path: str | PathLike = ''
     backbone_path: str | PathLike = ''
     coder_path: str | PathLike = ''
+    discriminator_path: str | PathLike = ''
     render_path: str | PathLike = RENDER_PATH
     checkpoint_path: str | PathLike = CHECK_PATH
     dataset_paths: list[str | PathLike] = field(default_factory=lambda: ['']) 
@@ -73,6 +74,7 @@ class ExpConfig:
     decay: float = 0.01
     momentum: float = 0.95
     clip: float = 1.0
+    gan_ratio: float = 0.5
     mask_ratio: float = 0.25
     mask_type: str = 'span'
     total_steps: int = 4000 # number of parameter update steps
@@ -155,6 +157,10 @@ class ExpConfig:
             self._min_metrics[name] = value
             self._min_metrics_step[name] = self.current_step
             print(f'Minimum value of {name} {value} updated at step {self.current_step}')
+
+    @property
+    def linear_gan_ratio(self) -> float:
+        return self.gan_ratio * float(self.current_step) / float(self.total_steps)
 
     @property
     def num_labels(self) -> int:
@@ -326,6 +332,10 @@ class ExpConfig:
         path = join(self.model_path(name), 'coder')
         if not exists(path):
             makedirs(path, exist_ok=True)
+        return path
+    
+    def discriminator_ckpt_path(self, name: str) -> str | PathLike:
+        path = join(self.model_path(name), 'discriminator')
         return path
 
     def optim_path(self, name: str) -> str | PathLike:

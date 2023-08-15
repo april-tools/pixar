@@ -1,7 +1,9 @@
 from .modeling import (
     LPixelForMLM,
     LatentGPT2,
-    LPixelForClassification
+    LPixelForClassification,
+    Discriminator,
+    DiscriminatorConfig
 )
 from .utils import (
     init_render,
@@ -40,4 +42,6 @@ __all__ = [
     'LPixelForClassification'
     'get_glue_dataset'
     'GLUE_META'
+    'Discriminator'
+    'DiscriminatorConfig'
 ]

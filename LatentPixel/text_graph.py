@@ -49,6 +49,7 @@ class TGraph:
     _value: torch.Tensor | None = None
     _patch_size: int | None = None
     _attention_mask: torch.Tensor | None = None
+    _text_mask: torch.Tensor | None = None
     _patch_mask: torch.Tensor | None = None
     _num_text_patches: int | list[int] | None = None
     _num_gen_patches: int | list[int] | None = None
@@ -64,6 +65,23 @@ class TGraph:
     _val2pil = Compose([ToPILImage(mode='RGB')])
     _pix_normalizer = Compose([Normalize(PIXEL_DEFAULT_IMAGE_MEAN, PIXEL_DEFAULT_IMAGE_STD)])
     _inv_pix_normalizer = Compose([Normalize(- PIXEL_DEFAULT_IMAGE_MEAN / PIXEL_DEFAULT_IMAGE_STD, 1 / PIXEL_DEFAULT_IMAGE_STD)])
+
+    def detach_(self) -> TGraph:
+        self._value = self._value.detach_()
+        if self._attention_mask is not None:
+            self._attention_mask = self._attention_mask.detach_()
+        if self._text_mask is not None:
+            self._text_mask = self._text_mask.detach_()
+        if self._patch_mask is not None:
+            self._patch_mask = self._patch_mask.detach_()
+        if self._predicts is not None:
+            self._predicts = self._predicts.detach_()
+        if self._labels is not None:
+            self._labels = self._labels.detach_()
+        if self.loss is not None:
+            self.loss = self.loss.detach_()
+        
+        return self
 
     @staticmethod
     def init_render(
@@ -132,6 +150,20 @@ class TGraph:
     @patch_size.setter
     def patch_size(self, size: int) -> None:
         self._patch_size = size
+
+    @property
+    def text_mask(self) -> torch.Tensor:
+        if self._text_mask is not None:
+            return self.process(self._text_mask)
+        
+        mask = torch.clone(self.attention_mask)
+        assert mask.dim() == 2
+        inds = (mask.sum(-1) - 1).type(torch.long)
+        num = mask.shape[0]
+        mask.T[inds, list(range(num))] = 0
+        self._text_mask = mask
+
+        return self.process(mask)
 
     def _get_attention_mask(self) -> torch.Tensor:
         if self._attention_mask is not None:
