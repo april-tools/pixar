@@ -29,6 +29,7 @@ class LatentModel(nn.Module):
         self.img_size = img_size
         self.latent_size = latent_size
         self.num_labels = num_labels
+        self.latent_norm = True
         
         if self.img_size is None:
             self.img_size = self.latent_size
@@ -52,15 +53,14 @@ class LatentModel(nn.Module):
     @torch.no_grad()
     def encode(self, img: TGraph) -> TGraph:
         pixel_values = img.unsquarelize().to_SD()
-        with torch.no_grad():
-            latent = self.coder.encode(pixel_values).latent_dist.mode()
+        latent = self.coder.encode(pixel_values).latent_dist.mode()
         
         encoded = TGraph.from_value(
             value=latent,
-            patch_size=self.patch_size,
+            patch_size=self.latent_patch_size,
             attention_mask=img.attention_mask,
             patch_mask=img.patch_mask,
-            num_text_patches=img.patch_mask,
+            num_text_patches=img.num_text_patches,
             num_gen_patches=img.num_gen_patches
         )
         encoded.labels = img.labels

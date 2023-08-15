@@ -31,11 +31,9 @@ class LPixelForMLM(LatentModel):
         pixel_config.image_size = self.latent_size[1:]
         pixel_config.patch_size = self.latent_size[1]
         pixel_config.num_channels = self.latent_size[0]
-        pixel_config.norm_pix_loss = False
+        print('pixel_config.norm_pix_loss', pixel_config.norm_pix_loss)
         self.backbone_config = pixel_config
         self.backbone: PIXELForPreTraining = PIXELForPreTraining.from_pretrained(path, config=pixel_config, ignore_mismatched_sizes=True)
-        print('Set the forward mode of PIXEL embedding to gen')
-        self.backbone.vit.embeddings.forward_mode = 'gen'
         return self.backbone
     
     def save_backbone(self, path: str | PathLike) -> None:
@@ -49,21 +47,32 @@ class LPixelForMLM(LatentModel):
         print(f'PIXEL backbone saved!')
     
     def latent_forward(self, img: TGraph) -> TGraph:
-        pixel_values = self._latent_norm(img.value) if self.coder is not None else img.to_pixel()
+        if self.coder is None:
+            logger.warning_once(f'Coder does not exist, use PIXEL normalization')
+            pixel_values = img.to_pixel()
+        # elif self.latent_norm:
+        #     logger.warning_once(f'Coder exists, apply SD normalization')
+        #     pixel_values = self._latent_norm(img.value) # normalize the latent image before feed to PIXEL
+        else:
+            logger.warning_once(f'Coder exists, but no SD normalization')
+            pixel_values = img.value
+            
         output: PIXELForPreTrainingOutput = self.backbone(
             pixel_values=pixel_values,
             attention_mask=img.attention_mask,
             patch_mask=img.patch_mask
-            )
+        )
         if self.coder is None:
             return TGraph.from_pixel(output, True, patch_size=self.latent_patch_size).unsquarelize()
         
         if isinstance(self.backbone, PIXELForPreTraining):
             logits = self.backbone.unpatchify(output.logits)
-            logits = self._inv_latent_norm(logits)
         else:
             logits = self.backbone.module.unpatchify(output.logits)
-            logits = self._inv_latent_norm(logits)
+
+        # if self.latent_norm:
+        #     logger.warning_noce("Inverse the latent SD normalization")
+        #     logits = self._inv_latent_norm(logits)
 
         return TGraph.from_value(
             value=logits,
@@ -106,7 +115,7 @@ class LPixelForClassification(LatentModel):
         config.image_size = self.latent_size[1:]
         config.patch_size = self.latent_size[1]
         config.num_channels = self.latent_size[0]
-        config.norm_pix_loss = False
+        # config.norm_pix_loss = False
         # setattr(config, 'num_labels', self.num_labels)
         config.num_labels = self.num_labels
         pixel: PIXELForSequenceClassification = PIXELForSequenceClassification.from_pretrained(path, config=config, ignore_mismatched_sizes=True)
@@ -129,7 +138,16 @@ class LPixelForClassification(LatentModel):
 
     def latent_forward(self, img: TGraph) -> TGraph:
         assert self.coder is None or self.coder.decoder is None, 'no decoder for the classification model'
-        values = img.value if self.coder is None else self._latent_norm(img.value)
+        if self.coder is None:
+            logger.warning_once(f'Coder does not exist, use PIXEL normalization')
+            values = img.to_pixel()
+        # elif self.latent_norm:
+        #     logger.warning_once(f'Coder exists, apply SD normalization')
+        #     values = self._latent_norm(img.value)
+        else:
+            logger.warning_once(f'Coder exists, but no SD normalization')
+            values = img.value
+            
         output: SequenceClassifierOutput = self.backbone.forward(
             pixel_values=values,
             attention_mask=img.attention_mask,

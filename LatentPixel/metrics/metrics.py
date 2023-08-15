@@ -88,7 +88,7 @@ class F1(Metric):
 class MC(Metric):
 
     def result(self) -> float:
-        return matthews_corrcoef(self.golden, self.compare)
+        return float(matthews_corrcoef(self.golden, self.compare))
     
     def metric_name(self) -> str:
         return 'Matthews_correlation'
@@ -99,15 +99,15 @@ class PC(Metric):
     def result(self) -> float:
         x = torch.tensor(self.compare).unsqueeze(1)
         y = torch.tensor(self.golden)
-        return r_regression(x, y)
+        return r_regression(x, y).tolist()[0]
     
     def metric_name(self) -> str:
-        return ' Pearson_correlation'
+        return 'Pearson_correlation'
     
 class SC(Metric):
 
     def result(self) -> float:
-        return spearmanr(self.golden, self.compare).statistic
+        return float(spearmanr(self.golden, self.compare, nan_policy='omit').statistic)
 
     def metric_name(self) -> str:
         return 'Spearman_correlation'

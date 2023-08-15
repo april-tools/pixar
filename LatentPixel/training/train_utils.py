@@ -29,6 +29,7 @@ from torch.distributed.fsdp.wrap import (
 
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
+from transformers.optimization import get_cosine_schedule_with_warmup
 
 from pixel import PIXELLayer, PIXELEmbeddings
 
@@ -261,6 +262,13 @@ def prepare_model_for_glue(config: ExpConfig) -> tuple[LatentModel, dict]:
         case _:
             raise NotImplementedError(f'GLUE evaluation on {config.model} has not been implemented')
         
+    if config.latent_norm:
+        print('Enable the latent norm')
+        model.latent_norm = True
+    else:
+        print('Disable the latent norm')
+        model.latent_norm = False
+        
     if config.gradient_checkpointing:
         output('Enable gradient checkpointing')
         model.backbone.gradient_checkpointing_enable()
@@ -301,11 +309,21 @@ def prepare_model_for_glue(config: ExpConfig) -> tuple[LatentModel, dict]:
     
     # init scheduler
     if config.scheduler.lower() == 'cosineannealinglr':
-        scheduler = CosineAnnealingLR(
-            optimizer=optim,
-            T_max=config.total_steps,
-            eta_min=0.1 * config.lr # from llama paper
-        )
+        if config.warm_up_step <= 0:
+            print(f'initialize the CosineAnnealingLR with no warm up')
+            scheduler = CosineAnnealingLR(
+                optimizer=optim,
+                T_max=config.total_steps,
+                eta_min=0.1 * config.lr # from llama paper
+            ) 
+        else:
+            print(f'initialize the CosineAnnealingLR with {config.warm_up_step} warm up steps')
+            scheduler = get_cosine_schedule_with_warmup(
+                optimizer=optim,
+                num_warmup_steps=config.warm_up_step,
+                num_training_steps=config.total_steps,
+                num_cycles=0.45
+            )
     else:
         raise KeyError(f'Invalid scheduler type {config.scheduler}')
     
@@ -362,6 +380,13 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel, dict]:
         case _:
             raise NotImplementedError(f'Unrecognizable model type {config.model}')
         
+    if config.latent_norm:
+        print('Enable the latent norm')
+        model.latent_norm = True
+    else:
+        print('Disable the latent norm')
+        model.latent_norm = False
+        
     model.set_grad_for_stage(config.stage)
     
     if config.gradient_checkpointing:
@@ -375,26 +400,29 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel, dict]:
             model.coder.to(config.device_id)
 
 
+    if config.stage == 1:
+        output('Load connection parameters for the optimizer.')
+        params = model.get_connection_params()
+    elif config.stage == 2:
+        output('Load backbone parameters for the optimizer.')
+        params = model.get_backbone_parameters()
+    else:
+        raise KeyError(f'Unsupport pretraining stage {config.stage}')
+
     # init optimizer
     match config.optim.lower():
         case 'adamw':
-            if config.stage == 1:
-                output('Load connection parameters to the AdamW optimizer.')
-            else:
-                output('Load backbone parameters to the AdamW optimizer.')
+            output('Init AdamW optimizer')
             optim = AdamW(
-                params=model.get_connection_params() if config.stage == 1 else model.get_backbone_parameters(),
+                params=params,
                 lr=config.lr,
                 betas=(config.beta1, config.beta2),
                 weight_decay=config.decay,
             )
         case 'sgd':
-            if config.stage == 1:
-                output('Load connection parameters to the SGD optimizer.')
-            else:
-                output('Load backbone parameters to the SGD optimizer.')
+            output('Init SGD optimizer')
             optim = SGD(
-                params=model.get_connection_params() if config.stage == 1 else model.get_backbone_parameters(),
+                params=params,
                 lr=config.lr,
                 momentum=config.momentum
             )
@@ -435,9 +463,12 @@ def save_exp(model: LatentModel, config: ExpConfig, name: str) -> None:
     if config.rank == 0:
         model.save_backbone(config.backbone_ckpt_path(name))
         model.save_coder(config.coder_ckpt_path(name))
-        config.save(name)
+        try:
+            config.save(name)
+        except:
+            output(f'failed to save the config')
+            output(config)
         
-
 class InfLoader:
     
     def __init__(self, dataloader: DataLoader, config: ExpConfig | None = None) -> None:

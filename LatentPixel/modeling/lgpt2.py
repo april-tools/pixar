@@ -282,7 +282,11 @@ class LatentGPT2(LatentModel):
             inputs_embeds=img_values
         )
         pred = output.last_hidden_state
-        attention_mask = mask2img(img.attention_mask, self.latent_patch_size).unsqueeze(1)[..., self.latent_patch_size:]
+        attention_mask = mask2img(img.attention_mask, self.latent_patch_size)
+        if attention_mask.dim() == 2:
+            attention_mask = attention_mask[..., self.latent_patch_size:]
+        elif attention_mask.dim() == 3:
+            attention_mask = attention_mask.unsqueeze(1)[..., self.latent_patch_size:]
         loss = (pred[..., :-self.latent_patch_size] - img_values[..., self.latent_patch_size:]) ** 2
         loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_channel)  # mean loss on removed patches
         

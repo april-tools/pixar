@@ -32,7 +32,7 @@ GLUE_META = [
     ('cola', ([MC], 2)),
     ('sst2', ([Accuracy], 2)),
     ('mrpc', ([Accuracy, F1], 2)),
-    ('stsb', ([PC, SC], -1)),
+    ('stsb', ([PC, SC], 1)),
     ('qqp', ([Accuracy, F1], 2)),
     ('mnli', ([Accuracy], 3)),
     ('qnli', ([Accuracy], 2)),
@@ -62,6 +62,7 @@ class ExpConfig:
     stage: int = 1
     optim: str = 'AdamW'
     scheduler: str = 'CosineAnnealingLR'
+    warm_up_step: int = -1
     batch_size: int = 256   # The real batch_size, it should be equal to num_gpu * sub_size * num_gradient_acc_steps
     sub_size: int = 128     # actual batch size for 1 gradient acc step on 1 gpu
     eval_batch_size: int = 256
@@ -88,6 +89,7 @@ class ExpConfig:
     font_file: str = 'GoNotoCurrent.ttf'
     image_size: list[int] = field(default_factory=lambda: [3, 16, 8464]) 
     latent_size: list[int] = field(default_factory=lambda: [3, 16, 8464]) 
+    latent_norm: bool = True # whether to normalize the input in the latent space
     
     torch_compile: bool = False # whether to compile the model into a static graph (refer to pytorch 2.0)
     dynamic_shape: bool = False # whether to use dynamic input shape while compiling
@@ -128,24 +130,30 @@ class ExpConfig:
     _device_id: int = -1
     _local_world_size: int = -1
     _render_config: dict = None
-    _metrics: defaultdict = defaultdict(list)
-    _max_metrics: defaultdict = defaultdict(-99999999999)
-    _max_metrics_step: defaultdict = defaultdict(-1)
-    _min_metrics: defaultdict = defaultdict(9999999999999)
-    _min_metrics_step: defaultdict = defaultdict(-1)
+    _metrics: defaultdict = field(default_factory=dict) 
+    _max_metrics: defaultdict = field(default_factory=dict) 
+    _max_metrics_step: defaultdict = field(default_factory=dict) 
+    _min_metrics: defaultdict = field(default_factory=dict) 
+    _min_metrics_step: defaultdict = field(default_factory=dict) 
     
     def update_metric(self, name: str, value: float):
+        if name not in self._metrics:
+            self._metrics[name] = []
+            self._max_metrics[name] = -9999999999
+            self._min_metrics[name] = 9999999999
+            self._max_metrics_step[name] = -1
+            self._min_metrics_step[name] = -1
         self._metrics[name].append(value)
         print(f'{name}: {value} at step {self.current_step}')
         
         if value > self._max_metrics[name]:
             self._max_metrics[name] = value
-            self._max_metrics_step = self.current_step
+            self._max_metrics_step[name] = self.current_step
             print(f'Maximum value of {name} {value} updated at step {self.current_step}')
             
         if value < self._min_metrics[name]:
             self._min_metrics[name] = value
-            self._min_metrics_step = self.current_step
+            self._min_metrics_step[name] = self.current_step
             print(f'Minimum value of {name} {value} updated at step {self.current_step}')
 
     @property
@@ -302,6 +310,12 @@ class ExpConfig:
             makedirs(path, exist_ok=False)
         return path
     
+    def image_sample_path(self, name: str) -> str | PathLike:
+        path = join(self.model_path('img_samples'), str(self.current_step), name)
+        if not exists(path):
+            makedirs(path, exist_ok=True)
+        return path
+        
     def backbone_ckpt_path(self, name: str) -> str | PathLike:
         path = join(self.model_path(name), 'backbone')
         if not exists(path):

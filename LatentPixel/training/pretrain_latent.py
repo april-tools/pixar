@@ -111,12 +111,26 @@ def train(config: ExpConfig):
             train_stack(stack, config, model.backbone)
 
             graph: TGraph = next(train_loader)
+            if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and config.rank == 0:
+                print(f'Save image input at step {config.current_step}')
+                graph.squarelize().to_file(config.image_sample_path('input'))
+                graph.unsquarelize()
             graph.set_device(config.device_id)
 
-            loss = model(graph).loss / config.num_grad_acc_step
+            results: TGraph = model(graph)
+            loss = results.loss / config.num_grad_acc_step
             backward(loss, optim_parts)
 
             running_loss += loss.item()
+            
+            if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and model.coder is None and config.rank == 0:
+                print(f'Save image output at step {config.current_step}')
+                results.set_device('cpu')
+                results.squarelize().to_file(config.image_sample_path('output'))
+                results.circle_mask('green', 0.3).squarelize().to_file(config.image_sample_path('output_with_mask'))
+                graph.set_device('cpu')
+                interleave = TGraph.reconstruct(graph, results, True)
+                interleave.squarelize().to_file(config.image_sample_path('reconstruction'))
 
         step(config, optim_parts, model.backbone)
         running_loss = distributed_average(running_loss, config.device_id)

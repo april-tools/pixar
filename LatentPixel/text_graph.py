@@ -7,6 +7,7 @@ from math import sqrt
 
 import torch
 from torchvision.transforms import PILToTensor, Compose, ToPILImage, Normalize
+from transformers import logging
 import numpy as np
 import pytesseract
 
@@ -38,6 +39,8 @@ from .config import (
 )
 
 from pixel import Encoding, PIXELForPreTrainingOutput
+
+logger = logging.get_logger(__name__)
     
 
 class TGraph:
@@ -90,20 +93,19 @@ class TGraph:
     
     @property
     def predcits(self) -> torch.Tensor:
-        if isinstance(self.labels, torch.DoubleTensor):
-            return self.labels
+        global logger
+        label_type = self.labels.dtype
+        if label_type == torch.float or label_type == torch.float64:
+            logger.warning_once('Detect float labels, do not call argmax while predict')
+            return self.value
         if self._predicts is None:
+            logger.warning_once('Detect integer labels, call argmax to predict labels')
             self._predicts = self.value.argmax(-1)
-        return self._predicts
+        return self.process(self._predicts)
     
     @property
     def value(self) -> torch.Tensor:
-        processed = self._value
-        if self.device is not None:
-            processed = self._value.to(self.device)
-        if self._half:
-            processed = processed.half()
-        return processed
+        return self.process(self._value)
     
     @property
     def labels(self) -> torch.Tensor:
@@ -144,7 +146,6 @@ class TGraph:
         return self._attention_mask
     
     @property
-    @torch.no_grad()
     def attention_mask(self) -> torch.Tensor:
         return self.process(self._get_attention_mask())
     
@@ -156,7 +157,6 @@ class TGraph:
         self._attention_mask = torch.clone(mask)
 
     @property
-    @torch.no_grad()
     def num_text_patches(self) -> int | list[int]:
         if self._num_text_patches is not None:
             return self._num_text_patches
@@ -177,7 +177,6 @@ class TGraph:
             return
         self._num_text_patches = copy_list(num)
 
-    @torch.no_grad()
     def clamp(self) -> TGraph:
         self._value = self._value.clamp(0, 1)
 
@@ -220,7 +219,6 @@ class TGraph:
         
         return self._patch_mask
     
-    @torch.no_grad()
     def _get_patch_mask(self) -> torch.Tensor:
         if self._patch_mask is not None:
             return self._patch_mask
@@ -343,8 +341,8 @@ class TGraph:
         color = color_image(color, height, w)
         grid = grid_mask * color
         
-        grid_value = (self._value * (1 - alpha) + grid * alpha) * grid_mask
-        self._value = self._value * (1 - grid_mask) + grid_value
+        grid_value = (self.value * (1 - alpha) + grid * alpha) * grid_mask
+        self._value = self.value * (1 - grid_mask) + grid_value
 
         return self
 
@@ -454,7 +452,7 @@ class TGraph:
         if self._value.dim() == 3:
             return self._to_file(path, self._value)
         
-        os.makedirs(path, exist_ok=False)
+        os.makedirs(path, exist_ok=True)
         for idx, value in enumerate(self._value):
             file_path = os.path.join(path, f'{idx}.png')
             self._to_file(file_path, value)
@@ -519,10 +517,10 @@ class TGraph:
         mask = mask == 1
 
         recon._value = (
-            origin._value * (~mask).int() + generated._value * mask.int()
+            origin.value * (~mask).int() + generated.value * mask.int()
         )
         if do_clamp:
-            recon._value = recon._value.clamp_(0, 1)
+            recon._value = recon.value.clamp_(0, 1)
 
         recon.attention_mask = origin.attention_mask
         recon.patch_mask = generated.patch_mask

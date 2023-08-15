@@ -80,7 +80,7 @@ def collate_glue(batch: dict) -> TGraph:
     
     tgraph = TGraph.from_text(text)
     tgraph.labels = torch.tensor(label)
-    assert isinstance(tgraph.labels, torch.LongTensor) or isinstance(tgraph.labels, torch.DoubleTensor)
+    assert isinstance(tgraph.labels, torch.LongTensor) or isinstance(tgraph.labels, torch.DoubleTensor) or isinstance(tgraph.labels, torch.FloatTensor)
     tgraph.attention_mask   # init the attention mask
     
     return tgraph
@@ -166,29 +166,41 @@ def get_glue_dataset(
     metrics = dict(GLUE_META)[task][0]
     num_labels = dict(GLUE_META)[task][1]
     
+    print(f'Begin to load data for <{task}> task at rank {rank}')
     train_data = load_dataset('glue', task, split='train')
+    print(f'Train dataset for {task} loaded')
     if task == 'mnli':
         val_datas = [load_dataset('glue', 'mnli', split='validation_matched'), load_dataset('glue', 'mnli', split='validation_mismatched')]
     else:
         val_datas = [load_dataset('glue', task, split='validation')]
-    
+        
+    print(f'Validation dataset for {task} loaded')
+    print(f'{len(val_datas)} validation sets in total')
+
     train_data = split_dataset_by_node(train_data, rank=rank, world_size=world_size)
+    print(f'Train dataset splitted')
+
     val_datas = [split_dataset_by_node(data, rank=rank, world_size=world_size) for data in val_datas]
+    print(f'Validation dataset splitted')
     
     train_loader = DataLoader(
         dataset=train_data,
         batch_size=sub_size,
+        shuffle=True,
         num_workers=mp_workers,
         prefetch_factor=4,
         collate_fn=collate_glue,
         worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
         drop_last=False
     )
+    print(f'Train dataloader prepared')
+
     
     val_loaders = [
         DataLoader(
             dataset=data,
             batch_size=sub_size,
+            shuffle=True,
             num_workers=mp_workers,
             prefetch_factor=4,
             collate_fn=collate_glue,
@@ -196,5 +208,9 @@ def get_glue_dataset(
             drop_last=False
         ) for data in val_datas
     ]
+    print(f'Validation dataloaders prepared')
+    print(f'{len(metrics)} metrics will be used')
+    print([met().metric_name() for met in metrics])
+
     
     return train_loader, val_loaders, metrics, num_labels
