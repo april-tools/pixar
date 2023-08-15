@@ -213,7 +213,7 @@ def backward(loss: torch.Tensor, optim_parts: dict) -> None:
     else:
         scaler.scale(loss).backward()
 
-def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP) -> None:
+def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP, update_progress_bar: bool = True) -> None:
     optim = optim_parts['optim']
     scaler = optim_parts['scaler']
     scheduler = optim_parts['scheduler']
@@ -237,7 +237,7 @@ def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP) -> None:
     optim.zero_grad()
 
     global _progress_bar
-    if _progress_bar:
+    if _progress_bar and update_progress_bar:
         try:
             _progress_bar.update()
         except Exception:

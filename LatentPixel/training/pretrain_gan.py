@@ -155,7 +155,7 @@ def train(config: ExpConfig):
 
 
         # Update the Latent model
-        step(config, optim_parts, model.backbone)
+        step(config, optim_parts, model.backbone, update_progress_bar=False)
         running_loss = distributed_average(running_loss, config.device_id)
         running_gan_loss = distributed_average(running_gan_loss, config.device_id)
         running_recon_loss = distributed_average(running_recon_loss, config.device_id)
