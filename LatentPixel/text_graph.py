@@ -158,7 +158,7 @@ class TGraph:
         
         mask = torch.clone(self.attention_mask)
         assert mask.dim() == 2
-        inds = (mask.sum(-1) - 1).type(torch.long)
+        inds = (mask.sum(-1) - 2).type(torch.long)
         num = mask.shape[0]
         mask.T[inds, list(range(num))] = 0
         self._text_mask = mask

@@ -97,8 +97,8 @@ def train(config: ExpConfig):
 
         model.backbone.train()
         model.coder.eval() if model.coder is not None else ...
-        fakes = []
-        reals = []
+        fakes: list[TGraph] = []
+        reals: list[TGraph] = []
 
         output(f'Current gan ratio {config.linear_gan_ratio}')
         with ExitStack() as stack:
@@ -199,8 +199,8 @@ def train(config: ExpConfig):
 
             if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and model.coder is None and config.rank == 0:
                 print(f'Save image output at step {config.current_step}')
-                graph: TGraph = real.detach_()
-                results: TGraph = fake.detach_()
+                graph = real.detach_()
+                results = fake.detach_()
                 results.set_device('cpu')
                 results.squarelize().to_file(config.image_sample_path('output'))
                 results.circle_mask('green', 0.3).squarelize().to_file(config.image_sample_path('output_with_mask'))
