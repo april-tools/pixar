@@ -619,7 +619,8 @@ def save_exp(model: LatentModel, config: ExpConfig, name: str, discriminator: Di
         except:
             output(f'failed to save the config')
             output(config)
-        
+
+
 class InfLoader:
     
     def __init__(self, dataloader: DataLoader, config: ExpConfig | None = None) -> None:
@@ -636,3 +637,22 @@ class InfLoader:
                 self.config.epoch += 1
                 output(f'Begin epoch {self.config.epoch}')
             return next(self.it)
+
+
+def is_one_more_batch(dataloader: DataLoader, config: ExpConfig) -> bool:
+    '''
+    Check whether other distributed process's dataloader has 1 more batch
+    '''
+    if config.num_gpu < 2:
+        return False
+    my_num = torch.tensor([len(dataloader)], dtype=torch.long, device=config.device_id)
+    num_list = [torch.clone(my_num) for _ in range(config.world_size)]
+    dist.all_gather(num_list, my_num)
+    
+    max_n = torch.cat(num_list).max().item()
+    my_num = my_num.item()
+    if max_n > my_num:
+        print(f'RANK {config.rank} has {my_num} batches, wait others with {max_n} batches.')
+        return True
+    return False
+    

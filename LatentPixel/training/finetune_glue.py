@@ -20,7 +20,8 @@ from .train_utils import (
     log,
     eva_stack,
     save_exp,
-    train_stack
+    train_stack,
+    is_one_more_batch
 )
 from ..utils import (
     timeit
@@ -48,6 +49,7 @@ def evaluate(model: LatentModel, loaders: list[DataLoader], config: ExpConfig, m
         eva_stack(stack, config, model.backbone)
         for lidx, loader in enumerate(loaders):
             running_metrics: list[Metric] = [metric() for metric in metrics]
+            wait_others = is_one_more_batch(loader, config)
             print(f'Begin to evluate the {lidx}th validation loader')
             print(f'{len(loaders)} validation sets in total')
             bidx = 0
@@ -60,9 +62,9 @@ def evaluate(model: LatentModel, loaders: list[DataLoader], config: ExpConfig, m
                 print(f'RANK{config.rank} {bidx} preds shpe', preds.shape)
                 print(f'RANK{config.rank} {bidx} gold shape', gold.shape)
                 if preds.shape[0] != config.sub_size:
-                    print(f'RANK {config.rank}: There are only {preds.shape[0]} samples in the last batch, padding with padding value -95288')
-                    padded_preds = torch.ones(config.sub_size, dtype=preds.dtype, device=preds.device) * -95288
-                    padded_golds = torch.ones(config.sub_size, dtype=gold.dtype, device=gold.device) * -95288
+                    print(f'RANK {config.rank}: There are only {preds.shape[0]} samples in the last batch, padding with padding value -9528')
+                    padded_preds = torch.ones(config.sub_size, dtype=preds.dtype, device=preds.device) * -9528
+                    padded_golds = torch.ones(config.sub_size, dtype=gold.dtype, device=gold.device) * -9528
 
                     padded_preds[:preds.shape[0]] = preds
                     padded_golds[:gold.shape[0]] = gold
@@ -91,12 +93,47 @@ def evaluate(model: LatentModel, loaders: list[DataLoader], config: ExpConfig, m
                     print(f'RANK {config.rank}: {len(golds)} golden samples gathered from all ranks')
                     print(f'RANK {config.rank}: {len(preds)} golden samples gathered from all ranks')
                     print('Filter the padding values')
-                    golds_filtered = [g for g in golds if float(g) != -95288.0]
-                    preds_filtered = [p for p in preds if float(p) != -95288.0]
+                    golds_filtered = [g for g in golds if float(g) != -9528.0]
+                    preds_filtered = [p for p in preds if float(p) != -9528.0]
 
 
                     print(f'RANK {config.rank}: {len(golds_filtered)} golden samples left')
                     print(f'RANK {config.rank}: {len(preds_filtered)} golden samples left')
+                    
+                    for met in running_metrics:
+                        met.accumulate(golden=golds_filtered, compare=preds_filtered)
+
+                    print('Metric accumulated on rank 0')
+
+            if wait_others:
+                # Other processes have 1 more evaluation batch, we need to create 1 more fake batch with padding values
+                padding_gold = torch.ones(config.sub_size, dtype=gold.dtype, device=gold.device) * -9528
+                padding_pred = torch.ones(config.sub_size, dtype=gold.dtype, device=gold.device) * -9528
+
+                gold_gathered = [torch.clone(padding_gold) for _ in range(config.num_gpu)] if config.rank == 0 else []
+                preds_gathered = [torch.clone(padding_pred) for _ in range(config.num_gpu)] if config.rank == 0 else []
+
+                gather(padding_gold, gold_gathered)
+                gather(padding_pred, preds_gathered)
+
+                if config.rank == 0:
+                    golds = torch.cat(gold_gathered)
+                    assert golds.dim() == 1
+                    preds = torch.cat(preds_gathered)
+                    assert preds.dim() == 1
+                    golds = golds.tolist()
+                    preds = preds.tolist()
+                    assert len(golds) == len(preds)
+
+                    print(f'RANK {config.rank}: {len(golds)} golden samples gathered from all ranks')
+                    print(f'RANK {config.rank}: {len(preds)} preds samples gathered from all ranks')
+                    print('Filter the padding values')
+                    golds_filtered = [g for g in golds if float(g) != -9528.0]
+                    preds_filtered = [p for p in preds if float(p) != -9528.0]
+
+
+                    print(f'RANK {config.rank}: {len(golds_filtered)} golden samples left')
+                    print(f'RANK {config.rank}: {len(preds_filtered)} preds samples left')
                     
                     for met in running_metrics:
                         met.accumulate(golden=golds_filtered, compare=preds_filtered)
