@@ -50,8 +50,6 @@ def evaluate(model: LatentModel, loaders: list[DataLoader], config: ExpConfig, m
         for lidx, loader in enumerate(loaders):
             running_metrics: list[Metric] = [metric() for metric in metrics]
             wait_others = is_one_more_batch(loader, config)
-            print(f'Begin to evluate the {lidx}th validation loader')
-            print(f'{len(loaders)} validation sets in total')
             bidx = 0
             for graph in loader:
                 graph: TGraph
@@ -59,10 +57,7 @@ def evaluate(model: LatentModel, loaders: list[DataLoader], config: ExpConfig, m
                 
                 preds: torch.Tensor = model(graph).predcits.flatten()
                 gold = graph.labels.flatten()
-                print(f'RANK{config.rank} {bidx} preds shpe', preds.shape)
-                print(f'RANK{config.rank} {bidx} gold shape', gold.shape)
                 if preds.shape[0] != config.sub_size:
-                    print(f'RANK {config.rank}: There are only {preds.shape[0]} samples in the last batch, padding with padding value -9528')
                     padded_preds = torch.ones(config.sub_size, dtype=preds.dtype, device=preds.device) * -9528
                     padded_golds = torch.ones(config.sub_size, dtype=gold.dtype, device=gold.device) * -9528
 
@@ -71,14 +66,11 @@ def evaluate(model: LatentModel, loaders: list[DataLoader], config: ExpConfig, m
 
                     preds = padded_preds
                     gold = padded_golds
-                    print(f'RANK {config.rank} padded preds', preds)
-                    print(f'RANK {config.rank} padded golds', gold)
                 
                 gold_gathered = [torch.clone(gold) for _ in range(config.num_gpu)] if config.rank == 0 else []
                 preds_gathered = [torch.clone(preds) for _ in range(config.num_gpu)] if config.rank == 0 else []
                 gather(gold, gold_gathered)
                 gather(preds, preds_gathered)
-                print(f'RANK{config.rank} {bidx} gathered ')
                 bidx += 1
 
                 if config.rank == 0:
@@ -90,15 +82,8 @@ def evaluate(model: LatentModel, loaders: list[DataLoader], config: ExpConfig, m
                     preds = preds.tolist()
                     assert len(golds) == len(preds)
 
-                    print(f'RANK {config.rank}: {len(golds)} golden samples gathered from all ranks')
-                    print(f'RANK {config.rank}: {len(preds)} golden samples gathered from all ranks')
-                    print('Filter the padding values')
                     golds_filtered = [g for g in golds if float(g) != -9528.0]
                     preds_filtered = [p for p in preds if float(p) != -9528.0]
-
-
-                    print(f'RANK {config.rank}: {len(golds_filtered)} golden samples left')
-                    print(f'RANK {config.rank}: {len(preds_filtered)} golden samples left')
                     
                     for met in running_metrics:
                         met.accumulate(golden=golds_filtered, compare=preds_filtered)
@@ -125,15 +110,9 @@ def evaluate(model: LatentModel, loaders: list[DataLoader], config: ExpConfig, m
                     preds = preds.tolist()
                     assert len(golds) == len(preds)
 
-                    print(f'RANK {config.rank}: {len(golds)} golden samples gathered from all ranks')
-                    print(f'RANK {config.rank}: {len(preds)} preds samples gathered from all ranks')
                     print('Filter the padding values')
                     golds_filtered = [g for g in golds if float(g) != -9528.0]
                     preds_filtered = [p for p in preds if float(p) != -9528.0]
-
-
-                    print(f'RANK {config.rank}: {len(golds_filtered)} golden samples left')
-                    print(f'RANK {config.rank}: {len(preds_filtered)} preds samples left')
                     
                     for met in running_metrics:
                         met.accumulate(golden=golds_filtered, compare=preds_filtered)

@@ -100,7 +100,7 @@ def train(config: ExpConfig):
         fakes: list[TGraph] = []
         reals: list[TGraph] = []
 
-        output(f'Current gan ratio {config.linear_gan_ratio}')
+        output(f'Current gan ratio {config.currnt_gan_ratio}')
         with ExitStack() as stack:
             train_gacc_stack(stack, config, model.backbone)
             optim_parts['optim'].zero_grad()
@@ -116,7 +116,7 @@ def train(config: ExpConfig):
                 # The backbone try to maximum the probability of generate real images, so it's 1 here
                 recon_loss: torch.Tensor = pred.loss / config.num_grad_acc_step
                 gan_loss: torch.Tensor = discriminator.forward(pred, 1).loss / config.num_grad_acc_step
-                loss: torch.Tensor = gan_loss * config.linear_gan_ratio + (1 - config.linear_gan_ratio) * recon_loss
+                loss: torch.Tensor = gan_loss * config.currnt_gan_ratio + (1 - config.currnt_gan_ratio) * recon_loss
                 
                 # calculate the gradients for the language backbone
                 backward(loss, optim_parts)
@@ -143,7 +143,7 @@ def train(config: ExpConfig):
             # The backbone try to maximum the probability of generate real images, so it's 1 here
             recon_loss: torch.Tensor = pred.loss / config.num_grad_acc_step
             gan_loss: torch.Tensor = discriminator.forward(pred, 1).loss / config.num_grad_acc_step
-            loss: torch.Tensor = gan_loss * config.linear_gan_ratio + (1 - config.linear_gan_ratio) * recon_loss
+            loss: torch.Tensor = gan_loss * config.currnt_gan_ratio + (1 - config.currnt_gan_ratio) * recon_loss
             
             # calculate the gradients for the language backbone
             backward(loss, optim_parts)

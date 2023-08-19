@@ -75,6 +75,7 @@ class ExpConfig:
     momentum: float = 0.95
     clip: float = 1.0
     gan_ratio: float = 0.5
+    gan_ratio_warm_up_steps: int = 100
     mask_ratio: float = 0.25
     mask_type: str = 'span'
     total_steps: int = 4000 # number of parameter update steps
@@ -159,8 +160,13 @@ class ExpConfig:
             print(f'Minimum value of {name} {value} updated at step {self.current_step}')
 
     @property
-    def linear_gan_ratio(self) -> float:
-        return self.gan_ratio * float(self.current_step) / float(self.total_steps)
+    def currnt_gan_ratio(self) -> float:
+        if self.current_step > self.gan_ratio_warm_up_steps:
+            ratio = self.gan_ratio
+        else:
+            ratio = self.current_step / self.gan_ratio_warm_up_steps * self.gan_ratio
+        return ratio
+            
 
     @property
     def num_labels(self) -> int:
@@ -390,3 +396,4 @@ def get_config() -> ExpConfig:
     # build the argument parser and parse the commandline arguments
         
     return ExpConfig(**params2dict(asdict(ExpConfig())))
+ 
