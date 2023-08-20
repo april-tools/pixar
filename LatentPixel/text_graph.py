@@ -133,7 +133,9 @@ class TGraph:
     def labels(self, labels: torch.Tensor) -> None:
         self._labels = labels
     
-    def process(self, value: torch.Tensor) -> torch.Tensor:
+    def process(self, value: torch.Tensor | None) -> torch.Tensor | None:
+        if value is None:
+            return None
         if self.device is not None:
             value = value.to(self.device)
         if self._half:
