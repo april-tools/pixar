@@ -2,7 +2,7 @@
 #SBATCH --partition=gpu
 #SBATCH --nodes=4
 #SBATCH --gres=gpu:4
-#SBATCH --time=70:30:0
+#SBATCH --time=40:30:0
 #SBATCH --qos=gpu
 #SBATCH --exclusive
 
@@ -32,28 +32,25 @@ srun torchrun \
     --rdzv-id=123 \
     --rdzv-endpoint=$head_node_ip \
     train.py \
-    --model 'LPixelForClassification' \
-    --exp_type '32L_pixel_glue_stsb' \
-    --backbone_path storage/checkpoints/lpixel_pretrain2/lpixel_pretrain/LPixelForPreTraining/20230718-020315/99000/backbone \
+    --model 'LPixelForMLM' \
+    --task lpixel_pretrain \
+    --exp_type '32L_pixel_2_' \
+    --backbone_path storage/checkpoints/lpixel_pretrain1/lpixel_pretrain/LPixelForPreTraining/20230718-005016/1500/backbone \
     --coder_path storage/SD2_VQGAN \
     --render_path storage/pixel-base \
+    --dataset_paths storage/enwiki storage/bookcorpus \
     --optim 'AdamW' \
-    --finetune_task 'glue' \
-    --glue_task 'stsb' \
-    --lr 1e-5 \
+    --lr 1.5e-4 \
     --beta1 0.9 \
     --beta2 0.999 \
-    --decay 0.0 \
+    --decay 0.05 \
     --stage 2 \
-    --total_steps 5000 \
-    --eval_freq 50 \
-    --save_freq 1000 \
-    --warm_up_step 50 \
+    --total_steps 100000 \
+    --save_freq 10000 \
     --best_save_freq 50 \
-    --latent_norm False \
     --seed 42 \
-    --batch_size 64 \
-    --sub_size 4 \
+    --batch_size 192 \
+    --sub_size 6 \
     --font_file 'GoNotoCurrent.ttf' \
     --dpi 240 \
     --pixels_per_patch 32 \
@@ -61,6 +58,6 @@ srun torchrun \
     --latent_size 4 4 2116 \
     --mix_precision fp16 \
     --half_coder true \
-    --mp_workers 4 \
+    --mp_workers 8 \
     --num_gpu_per_node $GPU_PER_NODE \
     --num_node $NUM_NODES  \

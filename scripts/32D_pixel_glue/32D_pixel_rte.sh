@@ -45,15 +45,15 @@ srun torchrun \
     --beta2 0.999 \
     --decay 0.05 \
     --stage 2 \
-    --total_steps 5000 \
-    --eval_freq 200 \
+    --total_steps 400 \
+    --eval_freq 20 \
     --save_freq 1000 \
     --warm_up_step 100 \
     --best_save_freq 50 \
     --latent_norm False \
     --seed 42 \
-    --batch_size 192 \
-    --sub_size 6 \
+    --batch_size 256 \
+    --sub_size 4 \
     --font_file 'GoNotoCurrent.ttf' \
     --dpi 240 \
     --pixels_per_patch 32 \

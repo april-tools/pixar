@@ -81,6 +81,7 @@ class ExpConfig:
     total_steps: int = 4000 # number of parameter update steps
     max_token: int = 512    # 1024 for gpt2, 2048 for llama 7b
     eval_freq: int = 100
+    begin_eval: int = 0
     save_freq: int = 1000
     best_save_freq: int = 100
     test_gpu_usibility: bool = False

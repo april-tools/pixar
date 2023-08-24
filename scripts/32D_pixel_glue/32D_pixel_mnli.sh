@@ -43,10 +43,11 @@ srun torchrun \
     --lr 3e-5 \
     --beta1 0.9 \
     --beta2 0.999 \
-    --decay 0.05 \
+    --decay 0.00 \
     --stage 2 \
-    --total_steps 15000 \
-    --eval_freq 500 \
+    --total_steps 30000 \
+    --eval_freq 200 \
+    --begin_eval 5000 \
     --save_freq 1000 \
     --warm_up_step 100 \
     --best_save_freq 50 \
