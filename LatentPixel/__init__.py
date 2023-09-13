@@ -3,7 +3,8 @@ from .modeling import (
     LatentGPT2,
     LPixelForClassification,
     Discriminator,
-    DiscriminatorConfig
+    DiscriminatorConfig,
+    CNNEncoder
 )
 from .utils import (
     init_render,
@@ -44,4 +45,5 @@ __all__ = [
     'GLUE_META'
     'Discriminator'
     'DiscriminatorConfig'
+    'CNNEncoder'
 ]
