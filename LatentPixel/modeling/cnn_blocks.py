@@ -5,7 +5,7 @@ def nonlinearity(x):
     # swish
     return x*torch.sigmoid(x)
 
-def Normalize(in_channels, num_groups=32):
+def Normalize(in_channels: int, num_groups: int=32) -> nn.GroupNorm:
     return torch.nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
 
 
@@ -54,14 +54,14 @@ class Downsample(nn.Module):
 
 
 class ResnetBlock(nn.Module):
-    def __init__(self, *, in_channels: int, out_channels: int | None=None, conv_shortcut: bool=False, dropout: float):
+    def __init__(self, *, in_channels: int, out_channels: int | None=None, conv_shortcut: bool=False, dropout: float, norm_groups: int):
         super().__init__()
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
 
-        self.norm1 = Normalize(in_channels)
+        self.norm1 = Normalize(in_channels, norm_groups)
         self.conv1 = torch.nn.Conv2d(
             in_channels,
             out_channels,
@@ -70,7 +70,7 @@ class ResnetBlock(nn.Module):
             padding=1
         )
 
-        self.norm2 = Normalize(out_channels)
+        self.norm2 = Normalize(out_channels, norm_groups)
         self.dropout = torch.nn.Dropout(dropout)
         self.conv2 = torch.nn.Conv2d(
             out_channels,
@@ -116,6 +116,119 @@ class ResnetBlock(nn.Module):
 
         return x+h
     
+
+class CNNEncoder(nn.Module):
+    
+    def __init__(
+            self, 
+            *, 
+            in_channels: int, 
+            hidden_channels: int, 
+            num_downsample: int, 
+            num_res: int,
+            hidden_dim: int,
+            dropout: float,
+            norm_groups: int
+        ) -> None:
+        super().__init__()
+        
+        self.in_channels = in_channels
+        self.hidden_channels = hidden_channels
+        self.num_downsample = num_downsample
+        self.num_res = num_res
+        self.hidden_dim = hidden_dim
+        self.dropout = dropout 
+        
+        self.in_conv = nn.Conv2d(
+            in_channels=self.in_channels,
+            out_channels=self.hidden_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1
+        )
+        
+        blocks = []
+        for _ in range(self.num_downsample):
+            block = nn.Sequential(
+                *[ResnetBlock(in_channels=self.hidden_channels, dropout=self.dropout, norm_groups=norm_groups) for _ in range(self.num_res)]
+            )
+            blocks.append(block)
+            blocks.append(Downsample(in_channels=self.hidden_channels, with_conv=True))
+        
+        self.blocks = nn.Sequential(*blocks)
+        
+        self.norm_out = Normalize(self.hidden_channels, norm_groups)
+        self.out_conv = nn.Conv2d(
+            in_channels=self.hidden_channels,
+            out_channels=self.hidden_dim,
+            kernel_size=3,
+            stride=1,
+            padding=1
+        )
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.in_conv(x)
+        x = self.blocks(x)
+        x = self.norm_out(x)
+        return self.out_conv(x)
+
+
+class CNNDecoder(nn.Module):
+    
+    def __init__(
+            self, 
+            *, 
+            target_channels: int, 
+            hidden_channels: int, 
+            num_upsample: int, 
+            num_res: int,
+            hidden_dim: int,
+            dropout: float,
+            norm_groups: int
+        ) -> None:
+        super().__init__()
+        
+        self.target_channels = target_channels
+        self.hidden_channels = hidden_channels
+        self.num_upsample = num_upsample
+        self.num_res = num_res
+        self.hidden_dim = hidden_dim
+        self.dropout = dropout
+        
+        self.in_conv = nn.Conv2d(
+            in_channels=self.hidden_dim,
+            out_channels=self.hidden_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1
+        )
+
+        blocks = []
+        for _ in range(self.num_upsample):
+            block = nn.Sequential(
+                *[ResnetBlock(in_channels=self.hidden_channels, dropout=self.dropout, norm_groups=norm_groups) for _ in range(self.num_res)]
+            )
+            blocks.append(block)
+            blocks.append(Upsample(in_channels=self.hidden_channels, with_conv=True))
+        
+        self.blocks = nn.Sequential(*blocks)
+        
+        self.norm_out = Normalize(self.hidden_channels, norm_groups)
+        self.out_conv = nn.Conv2d(
+            in_channels=self.hidden_channels,
+            out_channels=self.target_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1
+        )
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.in_conv(x)
+        x = self.blocks(x)
+        x = self.norm_out(x)
+        return self.out_conv(x)
+    
+
 if __name__ == '__main__' :
     img = torch.randn([32, 128, 16, 1600])
     resblock = ResnetBlock(in_channels=128, out_channels=128, dropout=0.1)

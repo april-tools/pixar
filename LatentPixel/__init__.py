@@ -4,7 +4,9 @@ from .modeling import (
     LPixelForClassification,
     Discriminator,
     DiscriminatorConfig,
-    CNNEncoder
+    CNNEncoder,
+    CNNAutoencoderConfig,
+    CNNAutoencoder
 )
 from .utils import (
     init_render,
@@ -46,4 +48,6 @@ __all__ = [
     'Discriminator'
     'DiscriminatorConfig'
     'CNNEncoder'
+    'CNNAutoencoderConfig'
+    'CNNAutoencoder'
 ]

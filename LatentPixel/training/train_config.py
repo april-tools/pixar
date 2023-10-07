@@ -89,6 +89,9 @@ class ExpConfig:
     font_size: int = 8
     pad_size: int = 3
     pixels_per_patch: int = 16
+    patch_len: int = 1
+    max_seq_length: int = 529
+    min_len: int = 800
     compress_ratio: int = 8
     font_file: str = 'GoNotoCurrent.ttf'
     image_size: list[int] = field(default_factory=lambda: [3, 16, 8464]) 
@@ -187,6 +190,8 @@ class ExpConfig:
             pixels_per_patch=self.pixels_per_patch,
             pad_size=self.pad_size,
             font_file=self.font_file,
+            patch_len=self.patch_len,
+            max_seq_length=self.max_seq_length
         )
         self._render_config = rconf.to_dict()
         return rconf

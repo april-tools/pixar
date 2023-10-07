@@ -42,7 +42,9 @@ from ..modeling import (
     LatentGPT2, 
     LPixelForClassification,
     Discriminator,
-    DiscriminatorConfig
+    DiscriminatorConfig,
+    CNNAutoencoder,
+    Compressor
 )
 from ..utils import timeit, init_render
 from ..text_graph import TGraph
@@ -206,14 +208,20 @@ def distributed_average(numbers: list | torch.Tensor | float, device: torch.devi
     
     return numbers
 
-def backward(loss: torch.Tensor, optim_parts: dict) -> None:
+def backward(loss: torch.Tensor, optim_parts: dict, config: ExpConfig | None = None) -> None:
+    if config is not None:
+        print(f'Begin to backward at rank {config.rank}')
     scaler: ShardedGradScaler = optim_parts['scaler']
     if scaler is None:
         loss.backward()
     else:
         scaler.scale(loss).backward()
+        
+    if config is not None:
+        print(f'Finish backward at rank {config.rank}')
 
 def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP, update_progress_bar: bool = True) -> None:
+    print(f'Beging updating at rank {config.rank}')
     optim = optim_parts['optim']
     scaler = optim_parts['scaler']
     scheduler = optim_parts['scheduler']
@@ -242,6 +250,8 @@ def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP, update_p
             _progress_bar.update()
         except Exception:
             output(f'Progress bar finished')
+    print(f'Finished updating at rank {config.rank}')
+
 
 def log(metric: dict) -> None:
     global _config
@@ -347,7 +357,7 @@ def prepare_model_for_glue(config: ExpConfig) -> tuple[LatentModel, dict]:
     return model, optim_parts
 
 @timeit
-def prepare_model(config: ExpConfig) -> tuple[LatentModel, dict]:
+def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
     # Select the correct model to load according to the config
     match config.model:
         case 'LPixelForMLM':
@@ -379,37 +389,47 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel, dict]:
                 model.delete_unused_layers()
             elif config.stage == 2:
                 model.delete_unused_layers()
+        case 'CNNAutoencoder':
+            output('Initializing the CNNAutoencoder')
+            output(f'Pathch length:{config.patch_len}')
+            model = CNNAutoencoder(path=config.coder_path)
+            output(str(model.config))
+            
         case _:
             raise NotImplementedError(f'Unrecognizable model type {config.model}')
-        
-    if config.latent_norm:
-        print('Enable the latent norm')
-        model.latent_norm = True
-    else:
-        print('Disable the latent norm')
-        model.latent_norm = False
-        
-    model.set_grad_for_stage(config.stage)
     
-    if config.gradient_checkpointing:
-        output('Enable gradient checkpointing')
-        model.backbone.gradient_checkpointing_enable()
+    if not isinstance(model, Compressor):
+        if config.latent_norm:
+            print('Enable the latent norm')
+            model.latent_norm = True
+        else:
+            print('Disable the latent norm')
+            model.latent_norm = False
+        
+        model.set_grad_for_stage(config.stage)
+    
+        if config.gradient_checkpointing:
+            output('Enable gradient checkpointing')
+            model.backbone.gradient_checkpointing_enable()
 
-    if config.half_coder and model.coder is not None:
-        output('Half the coder')
-        model.coder.half()
-        if not config.on_cpu:
-            model.coder.to(config.device_id)
+        if config.half_coder and model.coder is not None:
+            output('Half the coder')
+            model.coder.half()
+            if not config.on_cpu:
+                model.coder.to(config.device_id)
 
 
-    if config.stage == 1:
-        output('Load connection parameters for the optimizer.')
-        params = model.get_connection_params()
-    elif config.stage == 2:
-        output('Load backbone parameters for the optimizer.')
-        params = model.get_backbone_parameters()
+        if config.stage == 1:
+            output('Load connection parameters for the optimizer.')
+            params = model.get_connection_params()
+        elif config.stage == 2:
+            output('Load backbone parameters for the optimizer.')
+            params = model.get_backbone_parameters()
+        else:
+            raise KeyError(f'Unsupport pretraining stage {config.stage}')
     else:
-        raise KeyError(f'Unsupport pretraining stage {config.stage}')
+        model: Compressor
+        params = model.parameters()
 
     # init optimizer
     match config.optim.lower():
@@ -430,8 +450,11 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel, dict]:
             )
         case _:
             raise KeyError(f'Invalid optim type {config.optim}')
-
-    model.backbone = wrap_model(model.backbone, config)
+        
+    if not isinstance(model, CNNAutoencoder):
+        model.backbone = wrap_model(model.backbone, config)
+    else:
+        model = wrap_model(model, config)
 
     # init scheduler
     if config.scheduler.lower() == 'cosineannealinglr':
@@ -603,8 +626,19 @@ def prepare_gan(config: ExpConfig) -> tuple[LatentModel, dict, Discriminator, di
 
     return model, optim_parts, disc, disc_optim_parts
 
-def save_exp(model: LatentModel, config: ExpConfig, name: str, discriminator: Discriminator | None = None) -> None:
+def save_exp(model: LatentModel | Compressor, config: ExpConfig, name: str, discriminator: Discriminator | None = None) -> None:
+    if config.rank != 0:
+        return
     output(f'Saving the {name} model at step {config.current_step}')
+    if not isinstance(model, LatentModel):
+        model.module.save(config.coder_ckpt_path(name))
+        try:
+            config.save(name)
+        except:
+            output(f'failed to save the config')
+            output(config)
+        return
+    
     if config.rank == 0:
         model.save_backbone(config.backbone_ckpt_path(name))
         model.save_coder(config.coder_ckpt_path(name))

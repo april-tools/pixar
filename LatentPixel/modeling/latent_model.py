@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Any, Callable, Iterator
 import os
 
@@ -22,7 +23,8 @@ class LatentModel(nn.Module):
             backbone_path: str | os.PathLike | None = None,
             img_size: tuple[int, int, int] | None = None,
             latent_size: tuple[int, int, int] | None = None,
-            num_labels: int | None = None
+            num_labels: int | None = None,
+            patch_len: int = 1
             ) -> None:
         super().__init__()
 
@@ -30,6 +32,7 @@ class LatentModel(nn.Module):
         self.latent_size = latent_size
         self.num_labels = num_labels
         self.latent_norm = True
+        self.patch_len = patch_len
         
         if self.img_size is None:
             self.img_size = self.latent_size
@@ -185,4 +188,50 @@ class LatentModel(nn.Module):
     @property
     def num_latent_channel(self) -> int:
         return self.latent_size[0]
+
+
+class Compressor(nn.Module):
     
+    def __init__(
+            self, 
+            path: str | os.PathLike | None = None,
+            binary: bool = False,
+            config: Any | None = None
+            ) -> None:
+        super().__init__()
+        
+        self.path = path
+        self.binary = binary
+        self.config = config
+        
+        if self.path is None:
+            self.init(self.config)
+        else:
+            self.load(self.path)
+            
+    def init(self, config: Any) -> Compressor:
+        raise NotImplementedError('All child module should define this function within it')
+                
+    def load(self, path: str | os.PathLike) -> Compressor:
+        raise NotImplementedError('All child module should define this function within it')
+
+    def save(self, path: str | os.PathLike) -> None:
+        raise NotImplementedError('All child module should define this function within it')
+
+    def encode(self, img: TGraph) -> TGraph:
+        raise NotImplementedError('All child module should define this function within it')
+
+    def decode(self, img: TGraph) -> TGraph:
+        raise NotImplementedError('All child module should define this function within it')
+    
+    def forward_loss(self, preds: TGraph, target: TGraph, hidden: TGraph) -> torch.Tensor:
+        raise NotImplementedError('All child module should define this function within it')
+
+    def forward(self, img: TGraph) -> TGraph:
+        hidden = self.encode(img)
+        recon = self.decode(hidden)
+        
+        loss = self.forward_loss(recon, img, hidden)
+        recon.loss = loss
+        
+        return recon

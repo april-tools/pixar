@@ -25,11 +25,13 @@ class RenderConfig:
     font_size: int = 8
     pixels_per_patch: int = 16
     pad_size: int = 3
+    patch_len: int = 1
     font_file: str = 'GoNotoCurrent.ttf'
     path: str = 'storage/pixel-base'
     rgb: bool = True
     mask_ratio: float = 0.25
     binary: bool = False
+    max_seq_length: int = 529
 
     def to_dict(self) -> dict:
         return asdict(self)

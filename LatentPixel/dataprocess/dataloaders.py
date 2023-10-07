@@ -22,7 +22,8 @@ def dataloader_init_fn(worker_id, seed: int, render_config: RenderConfig) -> Non
     from ..utils import render, init_render
     if render is None:
         print(f'initialize the render with parameters {render_config.to_dict()}')
-        init_render(render_config)
+        render_params = render_config.to_dict()
+        TGraph.init_render(**render_params)
 
 def render_batched_text(batch: list[dict[str, str]], mask_ratio: float, mask_type: str) -> torch.Tensor:
     sents = []
