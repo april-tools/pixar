@@ -81,7 +81,10 @@ class CNNAutoencoder(Compressor):
         self.config = CNNAutoencoderConfig.load(path)
         self.init(self.config)
         
-        statedict = torch.load(os.path.join(path, self.ckpt_name))
+        statedict = torch.load(
+            os.path.join(path, self.ckpt_name), 
+            map_location='cpu'
+        )
         self.load_state_dict(statedict)
         
         return self

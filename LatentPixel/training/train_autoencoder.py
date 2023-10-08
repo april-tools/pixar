@@ -76,14 +76,11 @@ def train(config: ExpConfig):
         running_loss: float = 0.0
 
         model.train()
-        num_this_step = 0
         with ExitStack() as stack:
             train_gacc_stack(stack, config, model)
 
             for _ in range(config.num_grad_acc_step - 1):
                 graph: TGraph = next(train_loader)
-                num_this_step += 2
-                print(f'rank {config.rank}: {num_this_step}')
                 graph.set_device(config.device_id)
                 preds: TGraph = model(graph)
 
@@ -97,9 +94,6 @@ def train(config: ExpConfig):
             train_stack(stack, config, model)
 
             graph: TGraph = next(train_loader)
-            num_this_step += 2
-            print(f'rank {config.rank}: {num_this_step}')
-            print(f'rank: {config.rank}: ', graph.value.shape)
             if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and config.rank == 0:
                 print(f'Save image input at step {config.current_step}')
                 graph.to_file(config.image_sample_path('input'))
@@ -114,6 +108,7 @@ def train(config: ExpConfig):
             if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and config.rank == 0:
                 print(f'Save image output at step {config.current_step}')
                 results.set_device('cpu')
+                results.float()
                 results.to_file(config.image_sample_path('output'))
                 results.circle_mask('green', 0.3).to_file(config.image_sample_path('output_with_mask'))
                 graph.set_device('cpu')

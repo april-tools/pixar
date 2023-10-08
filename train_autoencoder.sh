@@ -2,13 +2,13 @@
 #SBATCH --partition=gpu
 #SBATCH --qos=gpu
 #SBATCH --gres=gpu:4
-#SBATCH --nodes=2
+#SBATCH --nodes=4
 #SBATCH --exclusive
-#SBATCH --time=01:30:00
+#SBATCH --time=40:30:00
 
 #SBATCH --account=sc118
 
-export NUM_NODES=2
+export NUM_NODES=4
 export GPU_PER_NODE=4
 
 source /work/sc118/sc118/yintaotai/.bashrc
@@ -36,7 +36,7 @@ srun torchrun \
     train.py \
     --model 'CNNAutoencoder' \
     --exp_type 'Compressor' \
-    --coder_path 'storage/autoencoders/r4h4c3r1' \
+    --coder_path storage/autoencoders/r4h4c3r1hc64 \
     --render_path storage/pixel-base \
     --dataset_paths storage/enwiki storage/bookcorpus \
     --optim 'AdamW' \
@@ -44,8 +44,8 @@ srun torchrun \
     --beta1 0.99 \
     --beta2 0.999 \
     --decay 0.05 \
-    --total_steps 4000 \
-    --save_freq 20 \
+    --total_steps 10000 \
+    --save_freq 500 \
     --best_save_freq 50 \
     --seed 42 \
     --batch_size 256 \
@@ -54,7 +54,7 @@ srun torchrun \
     --eval_freq 200 \
     --dpi 120 \
     --pixels_per_patch 16 \
-    --min_len 1000 \
+    --min_len 900 \
     --max_seq_length 720 \
     --patch_len 6 \
     --mix_precision fp16 \

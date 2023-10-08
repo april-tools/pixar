@@ -148,7 +148,7 @@ class TGraph:
         mask_ratio: float = 0.25,
         patch_len: int = 1,
         num_workers: int = 1
-    ) -> PangoCairoTextRenderer:
+    ) -> None:
         TGraph._patch_len = patch_len
         config = RenderConfig(
             dpi=dpi,
@@ -162,7 +162,8 @@ class TGraph:
             max_seq_length=max_seq_length,
             binary=binary
         )
-        return init_render(config, num_worker=num_workers)
+        init_render(config, num_worker=num_workers)
+        return
     
     @property
     def patch_len(self) -> int:
@@ -208,6 +209,8 @@ class TGraph:
             value = value.to(self.device)
         if self._half:
             value = value.half()
+        else:
+            value = value.float()
         return value
 
     @property
@@ -468,7 +471,7 @@ class TGraph:
         if square:
             value = self._squarelize(self._value)
         else:
-            value = self._value
+            value = self.value
         
         if value.dim() == 3:
             return self._to_PIL(value)
@@ -550,13 +553,15 @@ class TGraph:
         return cls.from_PIL(image)
     
     def _to_file(self, path: str | PathLike, value: torch.Tensor) -> None:
-        img = self._val2pil(value)
+        img = self._val2pil(value.clamp(0, 1))
         img.save(path, 'PNG')
 
     def to_file(self, path: str | PathLike, square: bool=True) -> None:
         if square:
             value = self._squarelize(self.value)
-        
+        else:
+            value = self.value
+                    
         if value.dim() == 3:
             return self._to_file(path, self._value)
         
@@ -589,8 +594,9 @@ class TGraph:
         nrows, _ = square_number(np)
         
         rows = torch.tensor_split(value, nrows, dim=-1)
+        square = torch.cat(rows, dim=-2).contiguous()
         
-        return torch.cat(rows, dim=-2)
+        return square
     
     def show(self, square: bool = True) -> Image | list[Image]:
         if square:
