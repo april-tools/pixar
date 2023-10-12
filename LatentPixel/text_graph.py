@@ -213,6 +213,7 @@ class TGraph:
 
     def clamp(self) -> TGraph:
         self._value = self._value.clamp(0, 1)
+        return self
 
     @property
     def is_squre(self) -> bool:

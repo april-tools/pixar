@@ -43,12 +43,12 @@ srun torchrun \
     --lr 2e-5 \
     --beta1 0.9 \
     --beta2 0.999 \
-    --decay 0.05 \
+    --decay 0.0 \
     --stage 2 \
-    --total_steps 5000 \
+    --total_steps 1000 \
     --eval_freq 50 \
     --save_freq 1000 \
-    --warm_up_step 100 \
+    --warm_up_step 200 \
     --best_save_freq 50 \
     --latent_norm False \
     --seed 42 \

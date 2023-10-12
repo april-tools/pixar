@@ -186,7 +186,7 @@ def train(config: ExpConfig):
         output(f'Step {config.current_step} loss: {running_loss}')
         log({'training loss': running_loss})
         
-        if config.current_step % config.eval_freq == 0:
+        if config.current_step % config.eval_freq == 0 and config.current_step > config.begin_eval:
             evaluate(model, dev_loaders, config, metrics)
             save_exp(model, config, str(config.current_step))
             

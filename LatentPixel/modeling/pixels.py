@@ -45,6 +45,18 @@ class LPixelForMLM(LatentModel):
             raise NotImplementedError(f'Saving for {type(self.backbone)} has not been implemented!')
         
         print(f'PIXEL backbone saved!')
+
+    def reverse_norm(self, img: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        if self.backbone.config.norm_pix_loss:
+            target = self.backbone.patchify(target)
+            img = self.backbone.patchify(img)
+            mean = target.mean(dim=-1, keepdim=True)
+            var = target.var(dim=-1, keepdim=True)
+            img = img * (var + 1.0e-6) ** 0.5 + mean
+            img = self.backbone.unpatchify(img)
+            return img
+        else:
+            return img
     
     def latent_forward(self, img: TGraph) -> TGraph:
         if self.coder is None:
@@ -63,7 +75,12 @@ class LPixelForMLM(LatentModel):
             patch_mask=img.patch_mask
         )
         if self.coder is None:
-            return TGraph.from_pixel(output, True, patch_size=self.latent_patch_size).unsquarelize()
+            if self.backbone.training:
+                return TGraph.from_pixel(output, True, patch_size=self.latent_patch_size).unsquarelize()
+            print('reverse the normalization')
+            result = TGraph.from_pixel(output, False, patch_size=self.latent_patch_size).unsquarelize()
+            result._value = self.reverse_norm(self.backbone.unpatchify(output.logits), img._value)
+            return result.clamp()
         
         if isinstance(self.backbone, PIXELForPreTraining):
             logits = self.backbone.unpatchify(output.logits)
