@@ -96,6 +96,7 @@ def init_render(
     render_config['font_file'] = os.path.join(config.path, config.font_file)
     render_config['pad_size'] = config.pad_size
     render_config['rgb'] = config.rgb
+    render_config['max_seq_length'] = config.max_seq_length
     binary = config.binary
 
     render = PangoCairoTextRenderer(**render_config)

@@ -4,6 +4,9 @@ from .modeling import (
     LPixelForClassification,
     Discriminator,
     DiscriminatorConfig,
+    CNNEncoder,
+    CNNAutoencoderConfig,
+    CNNAutoencoder,
     LatentLlama
 )
 from .utils import (
@@ -45,5 +48,8 @@ __all__ = [
     'GLUE_META'
     'Discriminator'
     'DiscriminatorConfig'
+    'CNNEncoder'
+    'CNNAutoencoderConfig'
+    'CNNAutoencoder'
     'LatentLlama'
 ]

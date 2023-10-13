@@ -3,6 +3,7 @@ from .lgpt2 import LatentGPT2
 from .llama import LatentLlama
 from .latent_model import LatentModel
 from .discriminator import Discriminator, DiscriminatorConfig
+from .autoencoders import CNNEncoder, CNNAutoencoderConfig, CNNAutoencoder, Compressor
 
 __all__ = [
     'LatentModel'
@@ -11,6 +12,10 @@ __all__ = [
     'LPixelForClassification'
     'Discriminator'
     'DiscriminatorConfig'
+    'CNNEncoder'
+    'CNNAutoencoderConfig'
+    'CNNAutoencoder'
+    'Compressor'
     'LatentLlama'
 ]
 
