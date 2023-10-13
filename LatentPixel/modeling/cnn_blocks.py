@@ -54,7 +54,7 @@ class Downsample(nn.Module):
 
 
 class ResnetBlock(nn.Module):
-    def __init__(self, *, in_channels: int, out_channels: int | None=None, conv_shortcut: bool=False, dropout: float, norm_groups: int):
+    def __init__(self, *, in_channels: int, out_channels: int | None=None, conv_shortcut: bool=False, dropout: float, norm_groups: int=32):
         super().__init__()
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
