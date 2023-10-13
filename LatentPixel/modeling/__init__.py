@@ -11,5 +11,6 @@ __all__ = [
     'LPixelForClassification'
     'Discriminator'
     'DiscriminatorConfig'
+    'LatentLlama'
 ]
 
