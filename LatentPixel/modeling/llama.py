@@ -4,7 +4,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 from transformers import LlamaModel, LlamaConfig
-from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMSNorm, make_causal_mask, expand_mask
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMSNorm, _make_causal_mask, _expand_mask
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers import logging
 from diffusers import AutoencoderKL
