@@ -6,7 +6,8 @@ from .modeling import (
     DiscriminatorConfig,
     CNNEncoder,
     CNNAutoencoderConfig,
-    CNNAutoencoder
+    CNNAutoencoder,
+    LatentLlama
 )
 from .utils import (
     init_render,
@@ -50,4 +51,5 @@ __all__ = [
     'CNNEncoder'
     'CNNAutoencoderConfig'
     'CNNAutoencoder'
+    'LatentLlama'
 ]
