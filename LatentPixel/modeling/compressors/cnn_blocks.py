@@ -213,7 +213,7 @@ class CNNDecoder(nn.Module):
         
         self.blocks = nn.Sequential(*blocks)
         
-        # self.norm_out = Normalize(self.hidden_channels, norm_groups)
+        self.norm_out = Normalize(self.hidden_channels, norm_groups)
         self.out_conv = nn.Conv2d(
             in_channels=self.hidden_channels,
             out_channels=self.target_channels,
@@ -225,7 +225,7 @@ class CNNDecoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.in_conv(x)
         x = self.blocks(x)
-        # x = self.norm_out(x)
+        x = self.norm_out(x)
         return self.out_conv(x)
     
 

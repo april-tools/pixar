@@ -19,13 +19,12 @@ from datasets.distributed import split_dataset_by_node
 def dataloader_init_fn(worker_id, seed: int, render_config: RenderConfig) -> None:
     seed_everyting(seed)
     os.system("taskset -p 0xffffffffff %d" % os.getpid())
+    print(f'initialize the render with parameters {render_config.to_dict()}')
+    render_params = render_config.to_dict()
+    TGraph.init_render(**render_params)
+    
     from .. import utils
-    if utils.render is None:
-        print(f'initialize the render with parameters {render_config.to_dict()}')
-        render_params = render_config.to_dict()
-        TGraph.init_render(**render_params)
-
-    print(f'patch_len initialized as {TGraph.patch_len}')
+    print(f'patch_len initialized as {TGraph._patch_len}')
     print(utils.render)
 
 def render_batched_text(batch: list[dict[str, str]], mask_ratio: float, mask_type: str) -> torch.Tensor:

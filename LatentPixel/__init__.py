@@ -4,9 +4,9 @@ from .modeling import (
     LPixelForClassification,
     Discriminator,
     DiscriminatorConfig,
-    CNNEncoder,
     CNNAutoencoderConfig,
-    CNNAutoencoder
+    CNNAutoencoder,
+    SDAutoencoder
 )
 from .utils import (
     init_render,
@@ -47,7 +47,7 @@ __all__ = [
     'GLUE_META'
     'Discriminator'
     'DiscriminatorConfig'
-    'CNNEncoder'
     'CNNAutoencoderConfig'
     'CNNAutoencoder'
+    'SDAutoencoder'
 ]

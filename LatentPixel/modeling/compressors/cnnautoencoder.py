@@ -3,20 +3,17 @@ from dataclasses import dataclass, asdict
 import os
 from os import PathLike
 import json
-from typing import Any
 import math
 
 import torch
 from torch import nn
 
-from LatentPixel.modeling.latent_model import Compressor
-from LatentPixel.text_graph import TGraph
-
+from ...text_graph import TGraph
 from .cnn_blocks import (
     CNNDecoder,
     CNNEncoder
 )
-from .latent_model import Compressor
+from .compressor import Compressor
 
 
 @dataclass
@@ -55,6 +52,7 @@ class CNNAutoencoder(Compressor):
     
     def init(self, config: CNNAutoencoderConfig) -> Compressor:
         self.config = config
+        self.latent_channels = config.hidden_channels
         
         self.encoder = CNNEncoder(
             in_channels=config.in_channels,
@@ -77,6 +75,12 @@ class CNNAutoencoder(Compressor):
         )
         return self
     
+    def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        return self.encoder.forward(x)
+
+    def _decode(self, z: torch.Tensor) -> torch.Tensor:
+        return self.decoder.forward(z)
+    
     def load(self, path: str | PathLike) -> Compressor:
         self.config = CNNAutoencoderConfig.load(path)
         self.init(self.config)
@@ -96,4 +100,3 @@ class CNNAutoencoder(Compressor):
             
     def forward_loss(self, preds: TGraph, target: TGraph, hidden: TGraph) -> torch.Tensor:
         return nn.MSELoss().forward(preds.value, target=target.value)
-    

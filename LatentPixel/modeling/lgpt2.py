@@ -276,7 +276,7 @@ class LatentGPT2(LatentModel):
         print(f'gpt2 backbone saved to {path}')
             
     def latent_forward(self, img: TGraph) -> TGraph:
-        img_values = self._latent_norm(img.unsquarelize().value) if self.coder else img.unsquarelize().to_pixel()
+        img_values = self._latent_norm(img.value) if self.compressor else img.to_pixel()
         output: BaseModelOutputWithPastAndCrossAttentions = self.backbone.forward(
             attention_mask=img.attention_mask,
             inputs_embeds=img_values
@@ -290,7 +290,7 @@ class LatentGPT2(LatentModel):
         loss = (pred[..., :-self.latent_patch_size] - img_values[..., self.latent_patch_size:]) ** 2
         loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_channel)  # mean loss on removed patches
         
-        if self.coder is None:
+        if self.compressor is None:
             result = TGraph.from_pixel_img(pred, True, img.attention_mask, img.patch_mask)
             result.loss = loss
             return result
@@ -322,16 +322,15 @@ class LatentGPT2(LatentModel):
             print('Delete the embedding layer')
             del self.backbone.wte
             self.backbone.wte = None
-        if self.coder is None:
+        if self.compressor is None:
             print('No unused layers to delete')
             return
         print('delete the decoder')
-        del self.coder.decoder
-        self.coder.decoder = None
+        del self.compressor.decoder
+        self.compressor.decoder = None
 
     def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
-        prompt.unsquarelize()
-        if self.coder is not None:
+        if self.compressor is not None:
             encoded = self.encode(prompt)
         else:
             encoded = prompt

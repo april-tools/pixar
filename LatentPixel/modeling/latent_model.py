@@ -11,6 +11,12 @@ from diffusers import AutoencoderKL
 from ..text_graph import TGraph
 from ..config import LATENT_DEFAULT_MEAN, LATENT_DEFAULT_STD
 
+from .compressors import (
+    Compressor,
+    CNNAutoencoder,
+    SDAutoencoder
+)
+
 
 class LatentModel(nn.Module):
     
@@ -19,7 +25,7 @@ class LatentModel(nn.Module):
 
     def __init__(
             self, 
-            coder_path: str | os.PathLike | None = None,
+            compressor_path: str | os.PathLike | None = None,
             backbone_path: str | os.PathLike | None = None,
             img_size: tuple[int, int, int] | None = None,
             latent_size: tuple[int, int, int] | None = None,
@@ -39,11 +45,11 @@ class LatentModel(nn.Module):
         if self.latent_size is None:
             self.latent_size = self.img_size
 
-        self.coder = self.load_coder(coder_path)
+        self.compressor = self.load_compressor(compressor_path)
         self.backbone = self.load_backbone(backbone_path)
 
     def forward(self, img: TGraph) -> TGraph:
-        if self.coder is None:
+        if self.compressor is None:
             return self.latent_forward(img)
         
         latent = self.encode(img)
@@ -55,40 +61,14 @@ class LatentModel(nn.Module):
 
     @torch.no_grad()
     def encode(self, img: TGraph) -> TGraph:
-        pixel_values = img.unsquarelize().to_SD()
-        latent = self.coder.encode(pixel_values).latent_dist.mode()
-        
-        encoded = TGraph.from_value(
-            value=latent,
-            patch_size=self.latent_patch_size,
-            attention_mask=img.attention_mask,
-            patch_mask=img.patch_mask,
-            num_text_patches=img.num_text_patches,
-            num_gen_patches=img.num_gen_patches
-        )
-        encoded.labels = img.labels
-        
-        return encoded
-
+        return self.compressor.encode(img)
+    
     @torch.no_grad()
     def decode(self, img: TGraph) -> TGraph:
-        decoded = self.coder.decode(img.value).sample
-        result = TGraph.from_SD(
-            img=decoded, 
-            do_clip=True,
-            attention_mask=img.attention_mask,
-            patch_mask=img.patch_mask
-        )
-        result.loss = img.loss
-        result.patch_size = self.patch_size
-
-        return result
+        return self.compressor.decode(img)
 
     def latent_forward(self, img: TGraph) -> TGraph:
         raise NotImplementedError('All child module should define this function within it')
-    
-    def reverse_diffuse(self, img: TGraph, num_steps: int) -> TGraph:
-        raise NotImplementedError(f'Model {type(self)} do not implemented the diffusion function!')
 
     def load_backbone(self, path: str | os.PathLike) -> nn.Module:
         raise NotImplementedError('All child module should define this function within it')
@@ -96,28 +76,33 @@ class LatentModel(nn.Module):
     def save_backbone(self, path: str | os.PathLike) -> None:
         raise NotImplementedError('All child module should define this function within it')
 
-    def load_coder(self, path: str | os.PathLike) -> nn.Module:
+    def load_compressor(self, path: str | os.PathLike, name: str) -> Compressor:
         if path is None or len(path) == 0:
-            self.coder = None
+            self.compressor = None
             self.latent_size = self.img_size
-            print(f'Coder path is none, do not load coder for this model')
+            print(f'Coder path is none, do not load compressor for this model')
             return None
         
-        print(f'loading the coder from {path}')
-        coder: AutoencoderKL = AutoencoderKL.from_pretrained(path)
-        assert self.latent_size[0] == coder.config['latent_channels']
-        self.coder = coder
-        return self.coder
+        print(f'loading the compressor from {path}')
+        match name.lower():
+            case 'cnnautoencoder':
+                self.compressor = CNNAutoencoder(path=path)
+            case 'sdautoencoder':
+                self.compressor = SDAutoencoder(path=path)
+            case _:
+                raise KeyError(f'Do not support {name} compressor!')
+            
+        assert self.latent_size[0] == self.compressor.latent_channels
 
-    def save_coder(self, path: str | os.PathLike) -> None:
-        if self.coder is None:
+    def save_compressor(self, path: str | os.PathLike) -> None:
+        if self.compressor is None:
             print('Abandon the coder saving since the decoder is deleted.')
             return
-        elif self.coder.decoder is None:
+        elif self.compressor.decoder is None:
             print('Abandon the coder saving since the decoder is deleted.')
             return
         
-        self.coder.save_pretrained(path)
+        self.compressor.save(path)
     
     def init_connection_layers(self) -> None:
         raise NotImplementedError('All child module should define this function within it')
@@ -149,10 +134,10 @@ class LatentModel(nn.Module):
                 param.requires_grad = True
         elif stage == 2:
             print(f"Set gradient config for stage {stage}")
-            if self.coder is None:
+            if self.compressor is None:
                 print(f'This model has no coder to set grad')
                 return
-            for param in self.coder.parameters():
+            for param in self.compressor.parameters():
                 param.requires_grad = False
                 
     def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
@@ -160,9 +145,9 @@ class LatentModel(nn.Module):
 
     @property
     def has_decoder(self) -> bool:
-        if self.coder is None:
+        if self.compressor is None:
             return False
-        if self.coder.decoder is None:
+        if self.compressor.decoder is None:
             return False
         
         return True
@@ -188,108 +173,3 @@ class LatentModel(nn.Module):
     @property
     def num_latent_channel(self) -> int:
         return self.latent_size[0]
-
-
-class Compressor(nn.Module):
-    
-    def __init__(
-            self, 
-            path: str | os.PathLike | None = None,
-            binary: bool = False,
-            config: Any | None = None
-            ) -> None:
-        super().__init__()
-        
-        self.path = path
-        self.binary = binary
-        self.config = config
-        self.encoder: Compressor = None
-        self.decoder: Compressor = None
-        
-        if self.path is None:
-            self.init(self.config)
-        else:
-            self.load(self.path)
-            
-    def init(self, config: Any) -> Compressor:
-        raise NotImplementedError('All child module should define this function within it')
-                
-    def load(self, path: str | os.PathLike) -> Compressor:
-        raise NotImplementedError('All child module should define this function within it')
-
-    def save(self, path: str | os.PathLike) -> None:
-        raise NotImplementedError('All child module should define this function within it')
-
-    def encode(self, img: TGraph) -> TGraph:
-        # clip the long img into patches
-        x = img.value  * 2 - 1  # map values from [0, 1] range to [-1, 1] range
-        patches = self.patchify(x, img.patch_len)
-        
-        # encode patches
-        z = self.encoder.forward(patches)
-
-        # connect patches into long img
-        z = self.unpatchify(z, x.shape[0])
-        
-        encoded = TGraph.from_tgraph(img)
-        encoded._patch_size = z.shape[2]
-        encoded._value = z
-        
-        return encoded
-
-    def decode(self, img: TGraph) -> TGraph:
-        z = img.value
-        patches = self.patchify(z, img.patch_len)
-        
-        # decode patches
-        y = self.decoder.forward(patches)
-        
-        # connect patches into long img
-        y = self.unpatchify(y, z.shape[0])
-        
-        decoded = TGraph.from_tgraph(img)
-        decoded._patch_size = y.shape[2]
-        decoded._value = (y + 1) / 2    # map values from [-1, 1] range to [0, 1] range
-        
-        return decoded
-    
-    def forward_loss(self, preds: TGraph, target: TGraph, hidden: TGraph) -> torch.Tensor:
-        raise NotImplementedError('All child module should define this function within it')
-
-    def forward(self, img: TGraph) -> TGraph:
-        hidden = self.encode(img)
-        recon = self.decode(hidden)
-        
-        loss = self.forward_loss(recon, img, hidden)
-        recon.loss = loss
-        
-        return recon
-    
-    @classmethod
-    def patchify(cls, x: torch.Tensor, patch_len: int) -> torch.Tensor:
-        # clip the long img into patches
-        if x.dim() == 3:
-            x = x.unsqueeze(0)
-
-        bs, c, h, w = x.shape
-        
-        x = x.reshape(bs, c, h, -1, patch_len * h)    # bs, c, h, ps, w
-        x = x.permute(3, 0, 1, 2, 4)    # ps, bs, c, h, w
-        x = x.flatten(0, 1) # bps, c, h, w
-
-        return x
-    
-    @classmethod
-    def unpatchify(cls, z: torch.Tensor, batch_size: int) -> torch.Tensor:
-
-        bps, c, h, patch_width = z.shape
-        patch_num = bps // batch_size
-        w = patch_width * patch_num
-        
-
-        # connect patches into long img
-        z = z.unflatten(0, (patch_num, batch_size))    # ps, bs, lc, lh, lw
-        z = z.permute(1, 2, 3, 0, 4)
-        z = z.reshape([batch_size, c, h, w])
-        
-        return z
