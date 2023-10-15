@@ -93,10 +93,7 @@ def train(config: ExpConfig):
         with ExitStack() as stack:
             train_stack(stack, config, model)
 
-            graph: TGraph = next(train_loader)
-            if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and config.rank == 0:
-                print(f'Save image input at step {config.current_step}')
-                graph.to_file(config.image_sample_path('input'))
+            graph: TGraph = next(train_loader)                
             graph.set_device(config.device_id)
 
             results: TGraph = model(graph)
@@ -106,14 +103,13 @@ def train(config: ExpConfig):
             running_loss += loss.item()
             
             if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and config.rank == 0:
+                print(f'Save image input at step {config.current_step}')
+                graph.set_device('cpu')
+                graph.to_file(config.image_sample_path('input'))
                 print(f'Save image output at step {config.current_step}')
                 results.set_device('cpu')
                 results.float()
                 results.to_file(config.image_sample_path('output'))
-                results.circle_mask('green', 0.3).to_file(config.image_sample_path('output_with_mask'))
-                graph.set_device('cpu')
-                interleave = TGraph.reconstruct(graph, results, True)
-                interleave.to_file(config.image_sample_path('random_interleaved'))
 
         step(config, optim_parts, model)
         running_loss = distributed_average(running_loss, config.device_id)
