@@ -203,6 +203,8 @@ class Compressor(nn.Module):
         self.path = path
         self.binary = binary
         self.config = config
+        self.encoder: Compressor = None
+        self.decoder: Compressor = None
         
         if self.path is None:
             self.init(self.config)
@@ -219,10 +221,37 @@ class Compressor(nn.Module):
         raise NotImplementedError('All child module should define this function within it')
 
     def encode(self, img: TGraph) -> TGraph:
-        raise NotImplementedError('All child module should define this function within it')
+        # clip the long img into patches
+        x = img.value
+        patches = self.patchify(x, img.patch_len)
+        
+        # encode patches
+        z = self.encoder.forward(patches)
+
+        # connect patches into long img
+        z = self.unpatchify(z, x.shape[0])
+        
+        encoded = TGraph.from_tgraph(img)
+        encoded._patch_size = z.shape[2]
+        encoded._value = z
+        
+        return encoded
 
     def decode(self, img: TGraph) -> TGraph:
-        raise NotImplementedError('All child module should define this function within it')
+        z = img.value
+        patches = self.patchify(z, img.patch_len)
+        
+        # decode patches
+        y = self.decoder.forward(patches)
+        
+        # connect patches into long img
+        y = self.unpatchify(y, z.shape[0])
+        
+        decoded = TGraph.from_tgraph(img)
+        decoded._patch_size = y.shape[2]
+        decoded._value = y
+        
+        return decoded
     
     def forward_loss(self, preds: TGraph, target: TGraph, hidden: TGraph) -> torch.Tensor:
         raise NotImplementedError('All child module should define this function within it')
@@ -235,3 +264,32 @@ class Compressor(nn.Module):
         recon.loss = loss
         
         return recon
+    
+    @classmethod
+    def patchify(cls, x: torch.Tensor, patch_len: int) -> torch.Tensor:
+        # clip the long img into patches
+        if x.dim() == 3:
+            x = x.unsqueeze(0)
+
+        bs, c, h, w = x.shape
+        
+        x = x.reshape(bs, c, h, -1, patch_len * h)    # bs, c, h, ps, w
+        x = x.permute(3, 0, 1, 2, 4)    # ps, bs, c, h, w
+        x = x.flatten(0, 1) # bps, c, h, w
+
+        return x
+    
+    @classmethod
+    def unpatchify(cls, z: torch.Tensor, batch_size: int) -> torch.Tensor:
+
+        bps, c, h, patch_width = z.shape
+        patch_num = bps // batch_size
+        w = patch_width * patch_num
+        
+
+        # connect patches into long img
+        z = z.unflatten(0, (patch_num, batch_size))    # ps, bs, lc, lh, lw
+        z = z.permute(1, 2, 3, 0, 4)
+        z = z.reshape([batch_size, c, h, w])
+        
+        return z
