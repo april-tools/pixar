@@ -222,7 +222,7 @@ class Compressor(nn.Module):
 
     def encode(self, img: TGraph) -> TGraph:
         # clip the long img into patches
-        x = img.value
+        x = img.value  * 2 - 1  # map values from [0, 1] range to [-1, 1] range
         patches = self.patchify(x, img.patch_len)
         
         # encode patches
@@ -249,7 +249,7 @@ class Compressor(nn.Module):
         
         decoded = TGraph.from_tgraph(img)
         decoded._patch_size = y.shape[2]
-        decoded._value = y
+        decoded._value = (y + 1) / 2    # map values from [-1, 1] range to [0, 1] range
         
         return decoded
     
