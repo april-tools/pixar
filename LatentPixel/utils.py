@@ -145,15 +145,17 @@ def timestamp() -> str:
     _timestamp = strftime('%Y%m%d-%H%M%S')
     return _timestamp
 
-def get_attention_mask(num_text_patches: int, seq_length: int | None = None):
+def get_attention_mask(num_text_patches: int, patch_len: int, seq_length: int | None = None):
     """
     Creates an attention mask of size [1, seq_length]
     The mask is 1 where there is text or a [SEP] black patch and 0 everywhere else
     """
     if seq_length is None:
         seq_length = get_num_patches()
+    
+    seq_length = seq_length // patch_len
 
-    n = min(num_text_patches + 1, seq_length)  # Add 1 for [SEP] token (black patch)
+    n = min(num_text_patches, seq_length)
     zeros = torch.zeros(seq_length)
     ones = torch.ones(n)
     zeros[:n] = ones
@@ -207,24 +209,27 @@ def timeit(fn: Callable) -> Callable:
         return result
     return inner_fn
 
-def mask2img(mask: torch.Tensor | list[int] | list[list[int]], patch_size: int) -> torch.Tensor:
+def mask2img(
+        mask: torch.Tensor | list[int] | list[list[int]], 
+        patch_size: int, 
+        patch_len: int
+    ) -> torch.Tensor:
     if isinstance(mask, list):
         mask = torch.tensor(mask)
     if mask.dim() == 2:
-        num_mask = mask.shape[0]
+        bs = mask.shape[0]
     else:
         assert mask.dim() == 1
-        num_mask = 1
+        bs = 1
 
     olen = mask.shape[-1]
     return mask \
         .reshape(-1) \
-        .repeat(patch_size**2)  \
-        .reshape(-1, olen * num_mask) \
+        .repeat(patch_size * patch_size * patch_len)  \
+        .reshape(-1, olen * bs) \
         .transpose(-1, -2) \
-        .reshape(-1, olen * patch_size, patch_size) \
+        .reshape(-1, olen * patch_size * patch_len, patch_size) \
         .transpose(-1, -2) \
-        .squeeze() \
         .contiguous()
 
 def _cons_mask(mask: torch.Tensor, begin_idx: int, num: int) -> torch.Tensor:

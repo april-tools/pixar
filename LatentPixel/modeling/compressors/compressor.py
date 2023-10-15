@@ -1,26 +1,62 @@
 from __future__ import annotations
+from dataclasses import dataclass, asdict
 from typing import Any
 
 import os
+import json
+
 import torch
 from torch import nn
 from ...text_graph import TGraph
 
+
+@dataclass
+class CompressorConfig:
+
+    compress_ratio: int = 4
+    num_channel: int = 3
+    num_latent_channel: int = 4
+    binary: bool = False
+
+    def save(self, folder: str | os.PathLike) -> str:
+        os.makedirs(folder, exist_ok=True)
+
+        js = json.dumps(asdict(self), indent=2)
+        path = os.path.join(folder, 'config.json')
+        with open(path, 'w') as fout:
+            fout.write(js)
+        
+        return js
+    
+    @classmethod
+    def load(cls, folder: str | os.PathLike) -> CompressorConfig:
+        with open(os.path.join(folder, 'config.json'), 'r') as fin:
+            conf = json.load(fin)
+        
+        return cls(**conf)
+
+
 class Compressor(nn.Module):
+
+    path: str | os.PathLike
+    encoder: nn.Module
+    decoder: nn.Module
+
+    config: CompressorConfig
     
     def __init__(
             self, 
             path: str | os.PathLike | None = None,
-            binary: bool = False,
-            config: Any | None = None
+            config: CompressorConfig | None = None
             ) -> None:
         super().__init__()
         
         self.path = path
-        self.binary = binary
-        self.config = config
         self.encoder: nn.Module = None
         self.decoder: nn.Module = None
+
+        self.config = config
+
         self.latent_channels: int = 0
         
         if self.path is None:
@@ -109,7 +145,7 @@ class Compressor(nn.Module):
         patch_num = bps // batch_size
         w = patch_width * patch_num
         
-
+        
         # connect patches into long img
         z = z.unflatten(0, (patch_num, batch_size))    # ps, bs, lc, lh, lw
         z = z.permute(1, 2, 3, 0, 4)

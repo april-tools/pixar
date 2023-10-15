@@ -21,7 +21,7 @@ logger = logging.get_logger(__name__)
 
 class GPT2ForPatchCausalInference(GPT2Model):
     
-    def __init__(self, config):
+    def __init__(self, config: GPT2Config):
         super().__init__(config)
 
         self.embed_dim = config.hidden_size
@@ -46,8 +46,20 @@ class GPT2ForPatchCausalInference(GPT2Model):
 
     def init_projection(self) -> None:
         config = self.config
-        self.in_proj = nn.Conv2d(config.num_channel, self.embed_dim, config.patch_size, stride=config.patch_size, bias=False)
-        self.out_proj = nn.ConvTranspose2d(self.embed_dim, config.num_channel, config.patch_size, stride=config.patch_size, bias=False)
+        self.in_proj = nn.Conv2d(
+            in_channels=config.num_channel,
+            out_channels=config.hidden_size,
+            kernel_size=(config.patch_size, config.patch_size * config.patch_len),
+            stride=config.patch_size * config.patch_len,
+            bias=False
+        )
+        self.out_proj = nn.ConvTranspose2d(
+            self.embed_dim, 
+            config.num_channel, 
+            (config.patch_size, config.patch_size * config.patch_len),
+            stride=config.patch_size * config.patch_len,
+            bias=False
+        )
         
     def forward(
         self,
@@ -67,7 +79,9 @@ class GPT2ForPatchCausalInference(GPT2Model):
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
         # map the input_embeds into vectors saperated by patches
         inputs_embeds = self.in_proj(inputs_embeds)
+        print(inputs_embeds.shape)
         inputs_embeds = inputs_embeds.flatten(2).transpose(1, 2)
+        print(inputs_embeds.shape)
 
         # >>>>>>> below are copied from GPT2Model
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -253,15 +267,15 @@ class GPT2ForPatchCausalInference(GPT2Model):
         )
         
 class LatentGPT2(LatentModel):
-    
-    def load_backbone(self, path: str | PathLike) -> nn.Module:
+        
+    def load_backbone(self, path: str | PathLike, num_latent_channel: int, latent_patch_size: int, patch_len: int, num_labels: int) -> nn.Module:
         gpt2_config = GPT2Config.from_pretrained(path)
         
-        setattr(gpt2_config, 'num_channel', self.num_latent_channel)
-        setattr(gpt2_config, 'patch_size', self.latent_patch_size)
+        setattr(gpt2_config, 'num_channel', num_latent_channel)
+        setattr(gpt2_config, 'patch_size', latent_patch_size)
+        setattr(gpt2_config, 'patch_len', patch_len)
         
         gpt2: GPT2ForPatchCausalInference = GPT2ForPatchCausalInference.from_pretrained(path, config=gpt2_config, ignore_mismatched_sizes=True)
-        self.backbone = gpt2
         
         return gpt2
     
@@ -276,29 +290,30 @@ class LatentGPT2(LatentModel):
         print(f'gpt2 backbone saved to {path}')
             
     def latent_forward(self, img: TGraph) -> TGraph:
-        img_values = self._latent_norm(img.value) if self.compressor else img.to_pixel()
+        img_values = img.value if self.compressor else img.value * 2 - 1    # map image from [0, 1] range to [-1, 1] range
         output: BaseModelOutputWithPastAndCrossAttentions = self.backbone.forward(
             attention_mask=img.attention_mask,
             inputs_embeds=img_values
         )
         pred = output.last_hidden_state
-        attention_mask = mask2img(img.attention_mask, self.latent_patch_size)
-        if attention_mask.dim() == 2:
-            attention_mask = attention_mask[..., self.latent_patch_size:]
-        elif attention_mask.dim() == 3:
-            attention_mask = attention_mask.unsqueeze(1)[..., self.latent_patch_size:]
-        loss = (pred[..., :-self.latent_patch_size] - img_values[..., self.latent_patch_size:]) ** 2
-        loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_channel)  # mean loss on removed patches
+
+        attention_mask = mask2img(img.attention_mask, self.latent_patch_size, self.patch_len)
+        patch_width = self.latent_patch_size * self.patch_len
+        attention_mask.unsqueeze_(1)
+        attention_mask = attention_mask[..., patch_width:]
+        print(attention_mask.shape)
+
+        loss = (pred[..., :-patch_width] - img_values[..., patch_width:]) ** 2
+        loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_latent_channel)  # mean loss on removed patches
         
         if self.compressor is None:
-            result = TGraph.from_pixel_img(pred, True, img.attention_mask, img.patch_mask)
+            result = TGraph.from_tgraph(img)
+            result._value = (pred + 1) / 2  # map image from [-1, 1] to [0, 1]
             result.loss = loss
             return result
         
-        latent_values = self._inv_latent_norm(pred)
-
         return TGraph.from_value(
-            value=latent_values,
+            value=pred,
             attention_mask=img.attention_mask,
             patch_mask=img.patch_mask,
             num_text_patches=img.num_text_patches,

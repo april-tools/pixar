@@ -3,7 +3,7 @@ from typing import Any
 
 import os
 from os import PathLike
-from math import sqrt
+from math import sqrt, ceil
 from functools import cache
 
 import torch
@@ -243,10 +243,10 @@ class TGraph:
             return self._attention_mask
         
         if isinstance(self.num_text_patches, int):
-            self._attention_mask = get_attention_mask(self.num_text_patches, get_num_patches())
+            self._attention_mask = get_attention_mask(self.num_text_patches, self.patch_len, get_num_patches())
             return self._attention_mask
         
-        masks = [get_attention_mask(num, get_num_patches()).unsqueeze(0) for num in self.num_text_patches]
+        masks = [get_attention_mask(num, self.patch_len, get_num_patches()).unsqueeze(0) for num in self.num_text_patches]
         self._attention_mask = torch.cat(masks, dim=0)
         return self._attention_mask
     
@@ -576,14 +576,14 @@ class TGraph:
         graph = cls()
         if isinstance(encods, Encoding):
             graph._value = torch.tensor(encods.pixel_values / 255, dtype=torch.float).permute(2, 0, 1)
-            graph.num_text_patches = encods.num_text_patches
+            graph.num_text_patches = ceil((encods.num_text_patches + 1) / cls._patch_len) # Add 1 for [SEP] token (black patch)
             graph.text = text
             return graph
         
         imgs = [torch.tensor(encod.pixel_values / 255, dtype=torch.float).permute(2, 0, 1).unsqueeze(0) for encod in encods]
         graph._value = torch.cat(imgs, dim=0).contiguous()
 
-        nums = [encod.num_text_patches for encod in encods]
+        nums = [ceil((encod.num_text_patches + 1) / cls._patch_len) for encod in encods]
         graph.num_text_patches = nums
         graph.text = text
 

@@ -13,37 +13,16 @@ from .cnn_blocks import (
     CNNDecoder,
     CNNEncoder
 )
-from .compressor import Compressor
+from .compressor import Compressor, CompressorConfig
 
 
 @dataclass
-class CNNAutoencoderConfig:
+class CNNAutoencoderConfig(CompressorConfig):
     
-    compress_ratio: int = 4
-    in_channels: int = 3
     hidden_channels: int = 128
     num_res: int = 1
-    hidden_dim: int = 4
     dropout: float = 0.2
     norm_groups: int = 32
-    binary: bool = False
-    
-    def save(self, folder: str | PathLike) -> str:
-        os.makedirs(folder, exist_ok=True)
-
-        js = json.dumps(asdict(self), indent=2)
-        path = os.path.join(folder, 'config.json')
-        with open(path, 'w') as fout:
-            fout.write(js)
-        
-        return js
-    
-    @classmethod
-    def load(cls, folder: str | PathLike) -> CNNAutoencoderConfig:
-        with open(os.path.join(folder, 'config.json'), 'r') as fin:
-            conf = json.load(fin)
-        
-        return cls(**conf)
 
 
 class CNNAutoencoder(Compressor):
@@ -55,21 +34,21 @@ class CNNAutoencoder(Compressor):
         self.latent_channels = config.hidden_channels
         
         self.encoder = CNNEncoder(
-            in_channels=config.in_channels,
+            in_channels=config.num_channel,
             hidden_channels=config.hidden_channels,
             num_downsample=int(math.log2(config.compress_ratio)),
             num_res=config.num_res,
-            hidden_dim=config.hidden_dim,
+            hidden_dim=config.num_latent_channel,
             dropout=config.dropout,
             norm_groups=config.norm_groups
         )
         
         self.decoder = CNNDecoder(
-            target_channels=config.in_channels,
+            target_channels=config.num_channel,
             hidden_channels=config.hidden_channels,
             num_upsample=int(math.log2(config.compress_ratio)),
             num_res=config.num_res,
-            hidden_dim=config.hidden_dim,
+            hidden_dim=config.num_latent_channel,
             dropout=config.dropout,
             norm_groups=config.norm_groups
         )

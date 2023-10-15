@@ -27,26 +27,36 @@ class LatentModel(nn.Module):
             self, 
             compressor_path: str | os.PathLike | None = None,
             backbone_path: str | os.PathLike | None = None,
-            img_size: tuple[int, int, int] | None = None,
-            latent_size: tuple[int, int, int] | None = None,
+            compressor_name: str | None = None,
+            num_channels: int | None = None,
             num_labels: int | None = None,
+            patch_size: int = 16,
             patch_len: int = 1
             ) -> None:
         super().__init__()
 
-        self.img_size = img_size
-        self.latent_size = latent_size
+        self.compressor_name = compressor_name
+        self.num_channel = num_channels
+        self.patch_size = patch_size
+        self.patch_len = patch_len
         self.num_labels = num_labels
         self.latent_norm = True
-        self.patch_len = patch_len
-        
-        if self.img_size is None:
-            self.img_size = self.latent_size
-        if self.latent_size is None:
-            self.latent_size = self.img_size
 
-        self.compressor = self.load_compressor(compressor_path)
-        self.backbone = self.load_backbone(backbone_path)
+        self.compressor = self.load_compressor(compressor_path, compressor_name)
+        if self.compressor is None:
+            self.num_latent_channel = num_channels
+            self.latent_patch_size = patch_size
+        else:
+            self.num_latent_channel = self.compressor.config.num_latent_channel
+            self.latent_patch_size = patch_size // self.compressor.config.compress_ratio
+            
+        self.backbone = self.load_backbone(
+            path=backbone_path,
+            num_latent_channel=self.num_latent_channel,
+            latent_patch_size=self.latent_patch_size,
+            patch_len=self.patch_len,
+            num_labels=self.num_labels
+        )        
 
     def forward(self, img: TGraph) -> TGraph:
         if self.compressor is None:
@@ -70,30 +80,36 @@ class LatentModel(nn.Module):
     def latent_forward(self, img: TGraph) -> TGraph:
         raise NotImplementedError('All child module should define this function within it')
 
-    def load_backbone(self, path: str | os.PathLike) -> nn.Module:
+    def load_backbone(
+            self, 
+            path: str | os.PathLike,
+            num_latent_channel: int,
+            latent_patch_size: int,
+            patch_len: int,
+            num_labels: int
+        ) -> nn.Module:
         raise NotImplementedError('All child module should define this function within it')
 
     def save_backbone(self, path: str | os.PathLike) -> None:
         raise NotImplementedError('All child module should define this function within it')
 
-    def load_compressor(self, path: str | os.PathLike, name: str) -> Compressor:
+    def load_compressor(self, path: str | os.PathLike, name: str) -> Compressor | None:
+        compressor = None
         if path is None or len(path) == 0:
-            self.compressor = None
-            self.latent_size = self.img_size
             print(f'Coder path is none, do not load compressor for this model')
-            return None
+            return compressor
         
         print(f'loading the compressor from {path}')
         match name.lower():
             case 'cnnautoencoder':
-                self.compressor = CNNAutoencoder(path=path)
+                compressor = CNNAutoencoder(path=path)
             case 'sdautoencoder':
-                self.compressor = SDAutoencoder(path=path)
+                compressor = SDAutoencoder(path=path)
             case _:
                 raise KeyError(f'Do not support {name} compressor!')
-            
-        assert self.latent_size[0] == self.compressor.latent_channels
 
+        return compressor
+            
     def save_compressor(self, path: str | os.PathLike) -> None:
         if self.compressor is None:
             print('Abandon the coder saving since the decoder is deleted.')
@@ -151,25 +167,3 @@ class LatentModel(nn.Module):
             return False
         
         return True
-    
-    @property
-    def has_backbone(self) -> bool:
-        if self.backbone is None:
-            return False
-        return True
-    
-    @property
-    def patch_size(self) -> int:
-        return self.img_size[1]
-
-    @property
-    def latent_patch_size(self) -> int:
-        return self.latent_size[1]
-    
-    @property
-    def num_channel(self) -> int:
-        return self.img_size[0]
-    
-    @property
-    def num_latent_channel(self) -> int:
-        return self.latent_size[0]
