@@ -578,6 +578,7 @@ class TGraph:
             graph._value = torch.tensor(encods.pixel_values / 255, dtype=torch.float).permute(2, 0, 1)
             graph.num_text_patches = ceil((encods.num_text_patches + 1) / cls._patch_len) # Add 1 for [SEP] token (black patch)
             graph.text = text
+            graph.patch_len = cls._patch_len
             return graph
         
         imgs = [torch.tensor(encod.pixel_values / 255, dtype=torch.float).permute(2, 0, 1).unsqueeze(0) for encod in encods]
@@ -586,7 +587,7 @@ class TGraph:
         nums = [ceil((encod.num_text_patches + 1) / cls._patch_len) for encod in encods]
         graph.num_text_patches = nums
         graph.text = text
-
+        graph.patch_len = cls._patch_len
         return graph
     
     def _squarelize(self, value: torch.Tensor) -> torch.Tensor:
