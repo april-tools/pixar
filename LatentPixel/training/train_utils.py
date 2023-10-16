@@ -209,19 +209,13 @@ def distributed_average(numbers: list | torch.Tensor | float, device: torch.devi
     return numbers
 
 def backward(loss: torch.Tensor, optim_parts: dict, config: ExpConfig | None = None) -> None:
-    if config is not None:
-        print(f'Begin to backward at rank {config.rank}')
     scaler: ShardedGradScaler = optim_parts['scaler']
     if scaler is None:
         loss.backward()
     else:
         scaler.scale(loss).backward()
-        
-    if config is not None:
-        print(f'Finish backward at rank {config.rank}')
 
 def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP, update_progress_bar: bool = True) -> None:
-    print(f'Beging updating at rank {config.rank}')
     optim = optim_parts['optim']
     scaler = optim_parts['scaler']
     scheduler = optim_parts['scheduler']
@@ -250,8 +244,6 @@ def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP, update_p
             _progress_bar.update()
         except Exception:
             output(f'Progress bar finished')
-    print(f'Finished updating at rank {config.rank}')
-
 
 def log(metric: dict) -> None:
     global _config

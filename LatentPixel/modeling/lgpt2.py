@@ -79,9 +79,7 @@ class GPT2ForPatchCausalInference(GPT2Model):
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
         # map the input_embeds into vectors saperated by patches
         inputs_embeds = self.in_proj(inputs_embeds)
-        print(inputs_embeds.shape)
         inputs_embeds = inputs_embeds.flatten(2).transpose(1, 2)
-        print(inputs_embeds.shape)
 
         # >>>>>>> below are copied from GPT2Model
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -301,7 +299,6 @@ class LatentGPT2(LatentModel):
         patch_width = self.latent_patch_size * self.patch_len
         attention_mask.unsqueeze_(1)
         attention_mask = attention_mask[..., patch_width:]
-        print(attention_mask.shape)
 
         loss = (pred[..., :-patch_width] - img_values[..., patch_width:]) ** 2
         loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_latent_channel)  # mean loss on removed patches
