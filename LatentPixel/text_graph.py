@@ -64,6 +64,7 @@ class TGraph:
     _patch_len: int = 1
     text: str | list[str] | None = None
     _num_text_patches: int | list[int] | None = None
+    _binary: bool = False
 
     _attention_mask: torch.Tensor | None = None
     _text_mask: torch.Tensor | None = None
@@ -79,6 +80,7 @@ class TGraph:
     # useful transforms
     _pil2val = Compose([PILToTensor()])
     _val2pil = Compose([ToPILImage(mode='RGB')])
+    _val2pil_binary = Compose([ToPILImage(mode=None)])
     _pix_normalizer = Compose([Normalize(PIXEL_DEFAULT_IMAGE_MEAN, PIXEL_DEFAULT_IMAGE_STD)])
     _inv_pix_normalizer = Compose([Normalize(- PIXEL_DEFAULT_IMAGE_MEAN / PIXEL_DEFAULT_IMAGE_STD, 1 / PIXEL_DEFAULT_IMAGE_STD)])
 
@@ -150,6 +152,7 @@ class TGraph:
         num_workers: int = 1
     ) -> None:
         TGraph._patch_len = patch_len
+        TGraph._binary = binary
         config = RenderConfig(
             dpi=dpi,
             font_size=font_size,
@@ -207,6 +210,8 @@ class TGraph:
             return None
         if self.device is not None:
             value = value.to(self.device)
+        if self._binary:
+            return (value > 0.5).long()
         if self._half:
             value = value.half()
         else:
@@ -465,11 +470,13 @@ class TGraph:
         return graph
 
     def _to_PIL(self, value: torch.Tensor) -> Image:
+        if self._binary:
+            return self._val2pil_binary(value.float())
         return self._val2pil(value.clamp(0, 1))
 
     def to_PIL(self, square: bool=True) -> Image | list[Image]:
         if square:
-            value = self._squarelize(self._value)
+            value = self._squarelize(self.value)
         else:
             value = self.value
         
@@ -553,7 +560,7 @@ class TGraph:
         return cls.from_PIL(image)
     
     def _to_file(self, path: str | PathLike, value: torch.Tensor) -> None:
-        img = self._val2pil(value.clamp(0, 1))
+        img = self._to_PIL(value)
         img.save(path, 'PNG')
 
     def to_file(self, path: str | PathLike, square: bool=True) -> None:
@@ -569,25 +576,35 @@ class TGraph:
         for idx, val in enumerate(value):
             file_path = os.path.join(path, f'{idx}.png')
             self._to_file(file_path, val)
+            
+    def binary(self) -> None:
+        if self._value.dim() == 3:  # c, h, w
+            val = self._value.mean(dim=0, keepdim=True)
+        elif self._value.dim() == 4:    # bs, c, h, w
+            val = self._value.mean(dim=1, keepdim=True)
+        
+        self._value = (val > 0.5).long()
 
     @classmethod
     def from_text(cls, text: str | list[str], **kwargs) -> TGraph:
         encods = render_text(text, **kwargs)
         graph = cls()
+        graph.patch_len = cls._patch_len
+        graph._binary = cls._binary
         if isinstance(encods, Encoding):
             graph._value = torch.tensor(encods.pixel_values / 255, dtype=torch.float).permute(2, 0, 1)
+            graph.binary()
             graph.num_text_patches = ceil((encods.num_text_patches + 1) / cls._patch_len) # Add 1 for [SEP] token (black patch)
             graph.text = text
-            graph.patch_len = cls._patch_len
             return graph
         
         imgs = [torch.tensor(encod.pixel_values / 255, dtype=torch.float).permute(2, 0, 1).unsqueeze(0) for encod in encods]
         graph._value = torch.cat(imgs, dim=0).contiguous()
+        graph.binary()
 
         nums = [ceil((encod.num_text_patches + 1) / cls._patch_len) for encod in encods]
         graph.num_text_patches = nums
         graph.text = text
-        graph.patch_len = cls._patch_len
         return graph
     
     def _squarelize(self, value: torch.Tensor) -> torch.Tensor:

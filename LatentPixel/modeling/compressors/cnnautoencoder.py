@@ -52,6 +52,12 @@ class CNNAutoencoder(Compressor):
             dropout=config.dropout,
             norm_groups=config.norm_groups
         )
+        
+        if self.config.binary:
+            self.loss_fn = nn.BCEWithLogitsLoss()
+        else:
+            self.loss_fn = nn.MSELoss()
+        
         return self
     
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
@@ -78,4 +84,7 @@ class CNNAutoencoder(Compressor):
         return
             
     def forward_loss(self, preds: TGraph, target: TGraph, hidden: TGraph) -> torch.Tensor:
-        return nn.MSELoss().forward(preds.value, target=target.value)
+        if self.config.binary:
+            return self.loss_fn.forward(preds.value.view(-1), target.value.view(-1).float())
+        
+        return self.loss_fn.forward(preds.value, target=target.value)

@@ -167,6 +167,7 @@ class CNNEncoder(nn.Module):
         )
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.float()
         x = self.in_conv(x)
         x = self.blocks(x)
         x = self.norm_out(x)

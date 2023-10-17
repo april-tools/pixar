@@ -91,6 +91,7 @@ class Compressor(nn.Module):
         z = self.unpatchify(z, x.shape[0])
         
         encoded = TGraph.from_tgraph(img)
+        encoded._binary = False # Latent representations are not binary
         encoded._patch_size = z.shape[2]
         encoded._value = z
         
@@ -108,7 +109,12 @@ class Compressor(nn.Module):
         
         decoded = TGraph.from_tgraph(img)
         decoded._patch_size = y.shape[2]
-        decoded._value = (y + 1) / 2    # map values from [-1, 1] range to [0, 1] range
+        decoded._binary = False
+        
+        if self.config.binary:
+            decoded._value = y
+        else:
+            decoded._value = (y + 1) / 2    # map values from [-1, 1] range to [0, 1] range
         
         return decoded
     
@@ -121,6 +127,9 @@ class Compressor(nn.Module):
         
         loss = self.forward_loss(recon, img, hidden)
         recon.loss = loss
+        if self.config.binary:
+            recon._binary = True
+            recon._value.sigmoid_()
         
         return recon
     

@@ -96,6 +96,7 @@ class ExpConfig:
     compress_ratio: int = 8
     font_file: str = 'GoNotoCurrent.ttf'
     num_channel: int = 3
+    binary: bool = False
     latent_norm: bool = True # whether to normalize the input in the latent space
     
     torch_compile: bool = False # whether to compile the model into a static graph (refer to pytorch 2.0)
@@ -191,7 +192,8 @@ class ExpConfig:
             pad_size=self.pad_size,
             font_file=self.font_file,
             patch_len=self.patch_len,
-            max_seq_length=self.max_seq_length
+            max_seq_length=self.max_seq_length,
+            binary=self.binary
         )
         self._render_config = rconf.to_dict()
         return rconf
