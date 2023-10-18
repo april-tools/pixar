@@ -31,7 +31,8 @@ class LatentModel(nn.Module):
             num_channels: int | None = None,
             num_labels: int | None = None,
             patch_size: int = 16,
-            patch_len: int = 1
+            patch_len: int = 1,
+            binary: bool = False
             ) -> None:
         super().__init__()
 
@@ -41,6 +42,7 @@ class LatentModel(nn.Module):
         self.patch_len = patch_len
         self.num_labels = num_labels
         self.latent_norm = True
+        self.binary = binary
 
         self.compressor = self.load_compressor(compressor_path, compressor_name)
         if self.compressor is None:
@@ -55,17 +57,57 @@ class LatentModel(nn.Module):
             num_latent_channel=self.num_latent_channel,
             latent_patch_size=self.latent_patch_size,
             patch_len=self.patch_len,
-            num_labels=self.num_labels
-        )        
+            num_labels=self.num_labels,
+            binary=self.binary
+        )
 
+        problems, ok = self.check_structure()
+        if not ok:
+            for p in problems:
+                print(p)
+            raise KeyError('Wrong configuration')
+
+        
+    def check_structure(self) -> tuple(list[str], bool):
+        msgs = []
+        ok = True
+        if self.compressor is not None:
+            if self.binary != self.compressor.config.binary:
+                msgs.append('Binary setting does not match the compressor!')
+                ok = False
+            if self.num_channel != self.compressor.config.num_channel:
+                msgs.append('Input channel setting does not match the compressor!')
+                ok = False
+        if self.binary:
+            if self.num_channel != 1:
+                msgs.append('Number of input channel should be 1 when binary')
+                ok = False
+            if self.compressor.config.num_channel != 1:
+                msgs.append('Number of compressor\'s channel shold be 1 when binary')
+                ok = False
+                
+        return msgs, ok
+        
     def forward(self, img: TGraph) -> TGraph:
         if self.compressor is None:
-            return self.latent_forward(img)
+            recon = self.latent_forward(img)
+            if self.binary:
+                recon._value.sigmoid_()
+                recon._binary = True
+            return recon
         
         latent = self.encode(img)
         recon = self.latent_forward(latent)
+        loss = recon.loss
+
         if self.has_decoder:
-            return self.decode(recon)
+            recon = self.decode(recon)
+
+        if self.binary:
+            recon._value.sigmoid_()
+            recon._binary = True
+
+        recon.loss = loss
         
         return recon
 
@@ -86,7 +128,8 @@ class LatentModel(nn.Module):
             num_latent_channel: int,
             latent_patch_size: int,
             patch_len: int,
-            num_labels: int
+            num_labels: int,
+            binary: bool
         ) -> nn.Module:
         raise NotImplementedError('All child module should define this function within it')
 

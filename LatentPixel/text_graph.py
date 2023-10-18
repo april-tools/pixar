@@ -473,7 +473,8 @@ class TGraph:
 
     def _to_PIL(self, value: torch.Tensor) -> Image:
         if self._binary:
-            return self._val2pil_binary(value.float())
+            value = (value.sigmoid() > BINARY_THRESHOLD).float()
+            return self._val2pil_binary(value)
         return self._val2pil(value.clamp(0, 1))
 
     def to_PIL(self, square: bool=True) -> Image | list[Image]:
@@ -686,7 +687,7 @@ class TGraph:
     
     @torch.no_grad()
     def ocr(self) -> str | list[str]:
-        imgs = self.to_PIL()
+        imgs = self.to_PIL(square=False)
         if isinstance(imgs, list):
             self.text = [pytesseract.image_to_string(img) for img in imgs]
         else:

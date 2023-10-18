@@ -266,12 +266,13 @@ class GPT2ForPatchCausalInference(GPT2Model):
         
 class LatentGPT2(LatentModel):
         
-    def load_backbone(self, path: str | PathLike, num_latent_channel: int, latent_patch_size: int, patch_len: int, num_labels: int) -> nn.Module:
+    def load_backbone(self, path: str | PathLike, num_latent_channel: int, latent_patch_size: int, patch_len: int, num_labels: int, binary: bool) -> nn.Module:
         gpt2_config = GPT2Config.from_pretrained(path)
         
         setattr(gpt2_config, 'num_channel', num_latent_channel)
         setattr(gpt2_config, 'patch_size', latent_patch_size)
         setattr(gpt2_config, 'patch_len', patch_len)
+        setattr(gpt2_config, 'binary', binary)
         
         gpt2: GPT2ForPatchCausalInference = GPT2ForPatchCausalInference.from_pretrained(path, config=gpt2_config, ignore_mismatched_sizes=True)
         
@@ -289,27 +290,27 @@ class LatentGPT2(LatentModel):
             
     def latent_forward(self, img: TGraph) -> TGraph:
         img_values = img.value if self.compressor else img.value * 2 - 1    # map image from [0, 1] range to [-1, 1] range
+        img_values = img_values.float()
         output: BaseModelOutputWithPastAndCrossAttentions = self.backbone.forward(
             attention_mask=img.attention_mask,
             inputs_embeds=img_values
         )
         pred = output.last_hidden_state
 
-        attention_mask = mask2img(img.attention_mask, self.latent_patch_size, self.patch_len)
-        patch_width = self.latent_patch_size * self.patch_len
-        attention_mask.unsqueeze_(1)
-        attention_mask = attention_mask[..., patch_width:]
+        # attention_mask = mask2img(img.attention_mask, self.latent_patch_size, self.patch_len)
+        # patch_width = self.latent_patch_size * self.patch_len
+        # attention_mask.unsqueeze_(1)    # add the channel dimension
+        # attention_mask = attention_mask[..., patch_width:]
 
-        loss = (pred[..., :-patch_width] - img_values[..., patch_width:]) ** 2
-        loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_latent_channel)  # mean loss on removed patches
-        
-        if self.compressor is None:
-            result = TGraph.from_tgraph(img)
-            result._value = (pred + 1) / 2  # map image from [-1, 1] to [0, 1]
-            result.loss = loss
-            return result
-        
-        return TGraph.from_value(
+        # loss = (pred[..., :-patch_width] - img_values[..., patch_width:]) ** 2
+        # loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_latent_channel)  # mean loss on removed patches
+
+        loss = self.forward_loss(pred, img_values, img.attention_mask)
+
+        if not self.binary and self.compressor is None:
+            pred = (pred + 1) / 2   #   map value from [-1, 1] to [0, 1]
+
+        result = TGraph.from_value(
             value=pred,
             attention_mask=img.attention_mask,
             patch_mask=img.patch_mask,
@@ -317,6 +318,25 @@ class LatentGPT2(LatentModel):
             loss=loss,
             patch_size=self.latent_patch_size
         )
+        result._binary = False
+
+        return result
+
+    def forward_loss(self, pred: torch.Tensor, target: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        patch_width = self.latent_patch_size * self.patch_len
+        pred = pred[..., :-patch_width]
+        target = target[..., patch_width:]
+        mask = mask2img(attention_mask, self.latent_patch_size, self.patch_len)
+        mask.unsqueeze_(1)
+        mask = mask[..., patch_width:]
+
+        if self.binary and self.compressor is None:
+            loss = nn.BCEWithLogitsLoss(reduction='none').forward(pred.reshape(-1).contiguous(), target.reshape(-1).contiguous())
+            loss = (loss * mask.reshape(-1).contiguous()).sum() / mask.sum()
+        else:
+            loss = ((pred - target)**2 * mask).sum() / (mask.sum() * self.num_latent_channel)   # MSE loss
+
+        return loss
         
     def get_connection_layers(self) -> nn.Module:
         return nn.ModuleList([
