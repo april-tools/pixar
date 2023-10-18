@@ -104,23 +104,34 @@ def get_pixel_pretrain_dataloader(
         pin_memory_device: str = 'cuda'
         ) -> DataLoader:
     paths.sort()
-    datasets = [load_from_disk(path) for path in paths]
-    print(f'Datasets loaded from {paths}')
+    if len(paths) > 1: # for interlevaing datasets, many datasets into one
+        datasets = [load_from_disk(path) for path in paths]
+        print(f'Datasets loaded from {paths}')
 
-    dataset_sizes = [ds._info.splits.total_num_examples for ds in datasets]
-    combined_size = sum(dataset_sizes)
-    dataset_sampling_probs = [d_size / combined_size for d_size in dataset_sizes]
+        dataset_sizes = [ds._info.splits.total_num_examples for ds in datasets]
+        combined_size = sum(dataset_sizes)
+        dataset_sampling_probs = [d_size / combined_size for d_size in dataset_sizes]
 
-    if streaming:
-        print('Convert the dataset into a streaming dataset')
-        datasets = [dataset.to_iterable_dataset(num_shards=128) for dataset in datasets]
+        if streaming:
+            print('Convert the dataset into a streaming dataset')
+            datasets = [dataset.to_iterable_dataset(num_shards=128) for dataset in datasets]
 
-    if rank is not None:
-        print('Split dataset for parallel training')
-        datasets = [split_dataset_by_node(dataset, rank=rank, world_size=world_size) for dataset in datasets]
+        if rank is not None:
+            print('Split dataset for parallel training')
+            datasets = [split_dataset_by_node(dataset, rank=rank, world_size=world_size) for dataset in datasets]
 
-    print('Begin to interleave datasets')
-    dataset = interleave_datasets(datasets, probabilities=dataset_sampling_probs, seed=seed, stopping_strategy='all_exhausted')
+        print('Begin to interleave datasets')
+        dataset = interleave_datasets(datasets, probabilities=dataset_sampling_probs, seed=seed, stopping_strategy='all_exhausted')
+    else:
+        path = paths[0]
+        dataset = load_from_disk(path)        
+        if streaming:
+            print('Convert the dataset into a streaming dataset')
+            dataset = dataset.to_iterable_dataset(num_shards=128)
+        if rank is not None:
+            print('Split dataset for parallel training')
+            dataset = split_dataset_by_node(dataset, rank=rank, world_size=world_size)
+            
     print('max_len', max_len)
     dataset = dataset.map(
         partial(collate_text, min_len=min_len, max_len=max_len), 

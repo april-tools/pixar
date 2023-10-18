@@ -9,6 +9,7 @@
 export NUM_NODES=4
 export GPU_PER_NODE=4
 
+#### below are modifed by Xiyang ######################
 #source /work/sc118/sc118/yintaotai/.bashrc
 #conda activate pt2hfpy310
 #activate the base  = source .bashrc
@@ -24,6 +25,14 @@ else
 fi
 unset __conda_setup
 conda activate latent
+export TRANSFORMERS_CACHE=/work/sc118/sc118/xliao11/cache
+export WANDB_DISABLED=True
+export HF_HOME=/work/sc118/sc118/xliao11/cache
+export WANDB_KEY=51b11767e418e6e1b836ebd2559f3a7c074b70ed
+# set the offline mode for training with huggingface
+export TRANSFORMERS_OFFLINE=1
+export HF_DATASETS_OFFLINE=1
+##########################################################
 
 module load nvidia/nvhpc/22.11
 
@@ -47,16 +56,16 @@ srun torchrun \
     train.py \
     --model 'LatentGPT2' \
     --exp_type '24D_gpt2_1' \
-    --backbone_path storage/gpt2 \
+    --backbone_path storage/llama/ \
     --render_path storage/pixel-base \
-    --dataset_paths storage/enwiki storage/bookcorpus \
+    --dataset_paths storage/bookcorpus \
     --optim 'AdamW' \
     --lr 1.5e-4 \
     --beta1 0.99 \
     --beta2 0.999 \
     --decay 0.05 \
     --stage 1 \
-    --total_steps 2000 \
+    --total_steps 100 \
     --save_freq 500 \
     --best_save_freq 50 \
     --seed 42 \
@@ -72,4 +81,4 @@ srun torchrun \
     --mp_workers 8 \
     --num_gpu_per_node $GPU_PER_NODE \
     --num_node $NUM_NODES  \
-
+#--dataset_paths storage/enwiki storage/bookcorpus \
