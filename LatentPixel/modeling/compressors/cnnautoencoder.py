@@ -7,6 +7,7 @@ import math
 
 import torch
 from torch import nn
+from torchvision.ops import sigmoid_focal_loss
 
 from ...text_graph import TGraph
 from .cnn_blocks import (
@@ -54,7 +55,7 @@ class CNNAutoencoder(Compressor):
         )
         
         if self.config.binary:
-            self.loss_fn = nn.BCEWithLogitsLoss()
+            self.loss_fn = sigmoid_focal_loss
         else:
             self.loss_fn = nn.MSELoss()
         
@@ -85,6 +86,6 @@ class CNNAutoencoder(Compressor):
             
     def forward_loss(self, preds: TGraph, target: TGraph, hidden: TGraph) -> torch.Tensor:
         if self.config.binary:
-            return self.loss_fn.forward(preds.value.view(-1), target.value.view(-1).float())
+            return self.loss_fn(preds.value.view(-1), target.value.view(-1).float(), reduction='mean')
         
         return self.loss_fn.forward(preds.value, target=target.value)
