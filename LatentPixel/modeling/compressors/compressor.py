@@ -130,7 +130,6 @@ class Compressor(nn.Module):
         if self.config.binary:
             recon._binary = True
             recon._value.sigmoid_()
-        
         return recon
     
     @classmethod

@@ -43,6 +43,8 @@ from pixel import Encoding, PIXELForPreTrainingOutput
 
 logger = logging.get_logger(__name__)
 
+BINARY_THRESHOLD = 0.5
+
 @cache
 def square_number(num: int) -> tuple[int, int]:
     upper = int(sqrt(num)) + 1
@@ -163,10 +165,10 @@ class TGraph:
             rgb=rgb,
             mask_ratio=mask_ratio,
             max_seq_length=max_seq_length,
-            binary=binary
+            binary=binary,
+            patch_len=patch_len
         )
-        init_render(config, num_worker=num_workers)
-        return
+        return init_render(config, num_worker=num_workers)
     
     @property
     def patch_len(self) -> int:
@@ -211,7 +213,7 @@ class TGraph:
         if self.device is not None:
             value = value.to(self.device)
         if self._binary:
-            return (value > 0.5).long()
+            return (value > BINARY_THRESHOLD).long()
         if self._half:
             value = value.half()
         else:
@@ -570,7 +572,7 @@ class TGraph:
             value = self.value
                     
         if value.dim() == 3:
-            return self._to_file(path, self._value)
+            return self._to_file(path, value)
         
         os.makedirs(path, exist_ok=True)
         for idx, val in enumerate(value):
@@ -583,7 +585,7 @@ class TGraph:
         elif self._value.dim() == 4:    # bs, c, h, w
             val = self._value.mean(dim=1, keepdim=True)
         
-        self._value = (val > 0.5).long()
+        self._value = (val > BINARY_THRESHOLD).long()
 
     @classmethod
     def from_text(cls, text: str | list[str], **kwargs) -> TGraph:
@@ -593,14 +595,14 @@ class TGraph:
         graph._binary = cls._binary
         if isinstance(encods, Encoding):
             graph._value = torch.tensor(encods.pixel_values / 255, dtype=torch.float).permute(2, 0, 1)
-            graph.binary()
+            graph.binary() if graph._binary else ...
             graph.num_text_patches = ceil((encods.num_text_patches + 1) / cls._patch_len) # Add 1 for [SEP] token (black patch)
             graph.text = text
             return graph
         
         imgs = [torch.tensor(encod.pixel_values / 255, dtype=torch.float).permute(2, 0, 1).unsqueeze(0) for encod in encods]
         graph._value = torch.cat(imgs, dim=0).contiguous()
-        graph.binary()
+        graph.binary() if graph._binary else ...
 
         nums = [ceil((encod.num_text_patches + 1) / cls._patch_len) for encod in encods]
         graph.num_text_patches = nums

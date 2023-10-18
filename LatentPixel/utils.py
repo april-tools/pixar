@@ -97,6 +97,7 @@ def init_render(
     render_config['pad_size'] = config.pad_size
     render_config['rgb'] = config.rgb
     render_config['max_seq_length'] = config.max_seq_length
+    render_config['patch_len'] = config.patch_len
     binary = config.binary
 
     render = PangoCairoTextRenderer(**render_config)
