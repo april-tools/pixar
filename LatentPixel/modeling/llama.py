@@ -223,13 +223,13 @@ class LlamaForPatchCausalInference(LlamaModel):
         
 class LatentLlama(LatentModel):
     
-    def load_backbone(self, path: str | PathLike) -> nn.Module:
+    def load_backbone(self, path: str | PathLike, num_latent_channel: int, latent_patch_size: int, patch_len: int, num_labels: int, binary: bool) -> nn.Module:
         Llama_config = LlamaConfig.from_pretrained(path)
         
-        setattr(gpt2_config, 'num_channel', num_latent_channel)
-        setattr(gpt2_config, 'patch_size', latent_patch_size)
-        setattr(gpt2_config, 'patch_len', patch_len)
-        setattr(gpt2_config, 'binary', binary)
+        setattr(Llama_config, 'num_channel', num_latent_channel)
+        setattr(Llama_config, 'patch_size', latent_patch_size)
+        setattr(Llama_config, 'patch_len', patch_len)
+        setattr(Llama_config, 'binary', binary)
         
         Llama: LlamaForPatchCausalInference = LlamaForPatchCausalInference.from_pretrained(path, config=Llama_config, ignore_mismatched_sizes=True)
         self.backbone = Llama
@@ -312,12 +312,12 @@ class LatentLlama(LatentModel):
             print('Delete the embedding layer')
             del self.backbone.wte
             self.backbone.wte = None
-        if self.coder is None:
+        if self.compressor is None:
             print('No unused layers to delete')
             return
         print('delete the decoder')
-        del self.coder.decoder
-        self.coder.decoder = None
+        del self.compressor.decoder
+        self.compressor.decoder = None
 
     def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
         prompt.unsquarelize()

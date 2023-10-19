@@ -123,7 +123,7 @@ def train(config: ExpConfig):
 
             running_loss += loss.item()
             
-            if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and model.coder is None and config.rank == 0:
+            if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and model.compressor is None and config.rank == 0:
                 print(f'Save image input at step {config.current_step}')
                 graph.to_file(config.image_sample_path('input'))
                 print(f'Save image output at step {config.current_step}')
