@@ -3,7 +3,7 @@ from .lgpt2 import LatentGPT2
 from .llama import LatentLlama
 from .latent_model import LatentModel
 from .discriminator import Discriminator, DiscriminatorConfig
-from .autoencoders import CNNEncoder, CNNAutoencoderConfig, CNNAutoencoder, Compressor
+from .compressors import CNNAutoencoderConfig, CNNAutoencoder, Compressor, SDAutoencoder
 
 __all__ = [
     'LatentModel'
@@ -17,5 +17,6 @@ __all__ = [
     'CNNAutoencoder'
     'Compressor'
     'LatentLlama'
+    'SDAutoencoder'
 ]
 

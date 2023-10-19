@@ -41,8 +41,20 @@ class LlamaForPatchCausalInference(LlamaModel):
 
     def init_projection(self) -> None:
         config = self.config
-        self.in_proj = nn.Conv2d(config.num_channel, self.embed_dim, config.patch_size, stride=config.patch_size, bias=False)
-        self.out_proj = nn.ConvTranspose2d(self.embed_dim, config.num_channel, config.patch_size, stride=config.patch_size, bias=False)
+        self.in_proj = nn.Conv2d(
+            in_channels=config.num_channel,
+            out_channels=config.hidden_size,
+            kernel_size=(config.patch_size, config.patch_size * config.patch_len),
+            stride=config.patch_size * config.patch_len,
+            bias=False
+        )
+        self.out_proj = nn.ConvTranspose2d(
+            self.embed_dim, 
+            config.num_channel, 
+            (config.patch_size, config.patch_size * config.patch_len),
+            stride=config.patch_size * config.patch_len,
+            bias=False
+        )
         
     def _prepare_decoder_attention_mask(self, attention_mask, input_shape, inputs_embeds, past_key_values_length):
         # create causal mask
@@ -214,8 +226,10 @@ class LatentLlama(LatentModel):
     def load_backbone(self, path: str | PathLike) -> nn.Module:
         Llama_config = LlamaConfig.from_pretrained(path)
         
-        setattr(LlamaConfig, 'num_channel', self.num_latent_channel)
-        setattr(LlamaConfig, 'patch_size', self.latent_patch_size)
+        setattr(gpt2_config, 'num_channel', num_latent_channel)
+        setattr(gpt2_config, 'patch_size', latent_patch_size)
+        setattr(gpt2_config, 'patch_len', patch_len)
+        setattr(gpt2_config, 'binary', binary)
         
         Llama: LlamaForPatchCausalInference = LlamaForPatchCausalInference.from_pretrained(path, config=Llama_config, ignore_mismatched_sizes=True)
         self.backbone = Llama
@@ -233,35 +247,54 @@ class LatentLlama(LatentModel):
         print(f'Llama backbone saved to {path}')
             
     def latent_forward(self, img: TGraph) -> TGraph:
-        img_values = self._latent_norm(img.unsquarelize().value) if self.coder else img.unsquarelize().to_pixel()
+        img_values = img.value if self.compressor else img.value * 2 - 1    # map image from [0, 1] range to [-1, 1] range
+        img_values = img_values.float()
         output: BaseModelOutputWithPastAndCrossAttentions = self.backbone.forward(
             attention_mask=img.attention_mask,
             inputs_embeds=img_values
         )
         pred = output.last_hidden_state
-        attention_mask = mask2img(img.attention_mask, self.latent_patch_size)
-        if attention_mask.dim() == 2:
-            attention_mask = attention_mask[..., self.latent_patch_size:]
-        elif attention_mask.dim() == 3:
-            attention_mask = attention_mask.unsqueeze(1)[..., self.latent_patch_size:]
-        loss = (pred[..., :-self.latent_patch_size] - img_values[..., self.latent_patch_size:]) ** 2
-        loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_channel)  # mean loss on removed patches
-        
-        if self.coder is None:
-            result = TGraph.from_pixel_img(pred, True, img.attention_mask, img.patch_mask)
-            result.loss = loss
-            return result
-        
-        latent_values = self._inv_latent_norm(pred)
 
-        return TGraph.from_value(
-            value=latent_values,
+        # attention_mask = mask2img(img.attention_mask, self.latent_patch_size, self.patch_len)
+        # patch_width = self.latent_patch_size * self.patch_len
+        # attention_mask.unsqueeze_(1)    # add the channel dimension
+        # attention_mask = attention_mask[..., patch_width:]
+
+        # loss = (pred[..., :-patch_width] - img_values[..., patch_width:]) ** 2
+        # loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_latent_channel)  # mean loss on removed patches
+
+        loss = self.forward_loss(pred, img_values, img.attention_mask)
+
+        if not self.binary and self.compressor is None:
+            pred = (pred + 1) / 2   #   map value from [-1, 1] to [0, 1]
+
+        result = TGraph.from_value(
+            value=pred,
             attention_mask=img.attention_mask,
             patch_mask=img.patch_mask,
             num_text_patches=img.num_text_patches,
             loss=loss,
             patch_size=self.latent_patch_size
         )
+        result._binary = False
+
+        return result
+
+    def forward_loss(self, pred: torch.Tensor, target: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        patch_width = self.latent_patch_size * self.patch_len
+        pred = pred[..., :-patch_width]
+        target = target[..., patch_width:]
+        mask = mask2img(attention_mask, self.latent_patch_size, self.patch_len)
+        mask.unsqueeze_(1)
+        mask = mask[..., patch_width:]
+
+        if self.binary and self.compressor is None:
+            loss = nn.BCEWithLogitsLoss(reduction='none').forward(pred.reshape(-1).contiguous(), target.reshape(-1).contiguous())
+            loss = (loss * mask.reshape(-1).contiguous()).sum() / mask.sum()
+        else:
+            loss = ((pred - target)**2 * mask).sum() / (mask.sum() * self.num_latent_channel)   # MSE loss
+
+        return loss
         
     def get_connection_layers(self) -> nn.Module:
         return nn.ModuleList([

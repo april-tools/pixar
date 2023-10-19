@@ -50,7 +50,8 @@ class ExpConfig:
     model: str = 'LPixelForMLM' # or LatentGPT2 or LPixelForClassification
     init_path: str | PathLike = ''
     backbone_path: str | PathLike = ''
-    coder_path: str | PathLike = ''
+    compressor_path: str | PathLike = ''
+    compressor_name: str = ''
     discriminator_path: str | PathLike = ''
     render_path: str | PathLike = RENDER_PATH
     checkpoint_path: str | PathLike = CHECK_PATH
@@ -94,8 +95,9 @@ class ExpConfig:
     min_len: int = 800
     compress_ratio: int = 8
     font_file: str = 'GoNotoCurrent.ttf'
-    image_size: list[int] = field(default_factory=lambda: [3, 16, 8464]) 
-    latent_size: list[int] = field(default_factory=lambda: [3, 16, 8464]) 
+    num_channel: int = 3
+    binary: bool = False
+    rgb: bool = True
     latent_norm: bool = True # whether to normalize the input in the latent space
     
     torch_compile: bool = False # whether to compile the model into a static graph (refer to pytorch 2.0)
@@ -191,7 +193,9 @@ class ExpConfig:
             pad_size=self.pad_size,
             font_file=self.font_file,
             patch_len=self.patch_len,
-            max_seq_length=self.max_seq_length
+            max_seq_length=self.max_seq_length,
+            rgb=self.rgb,
+            binary=self.binary
         )
         self._render_config = rconf.to_dict()
         return rconf
