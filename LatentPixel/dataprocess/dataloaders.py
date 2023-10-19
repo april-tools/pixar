@@ -141,7 +141,7 @@ def get_pixel_pretrain_dataloader(
         worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
         drop_last=True
     )
-
+    dataloader_init_fn(0, seed, render_config)
     return loader
 
 

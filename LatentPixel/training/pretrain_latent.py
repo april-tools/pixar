@@ -79,6 +79,11 @@ def train(config: ExpConfig):
     output('Experiment parepared, begin to train')
     dist_sync(config)
 
+    compressor = None
+    if model.compressor is not None:
+        compressor = model.compressor.__class__(config.compressor_path)
+        compressor.eval()
+
     train_loader = iter(train_loader)
 
     output(f'Total steps: {config.total_steps}')
@@ -93,7 +98,7 @@ def train(config: ExpConfig):
         running_loss: float = 0.0
 
         model.backbone.train()
-        model.coder.eval() if model.coder is not None else ...
+        model.compressor.eval() if model.compressor is not None else ...
         with ExitStack() as stack:
             train_gacc_stack(stack, config, model.backbone)
 
@@ -109,12 +114,7 @@ def train(config: ExpConfig):
 
         with ExitStack() as stack:
             train_stack(stack, config, model.backbone)
-
             graph: TGraph = next(train_loader)
-            if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and config.rank == 0:
-                print(f'Save image input at step {config.current_step}')
-                graph.squarelize().to_file(config.image_sample_path('input'))
-                graph.unsquarelize()
             graph.set_device(config.device_id)
 
             results: TGraph = model(graph)
@@ -124,13 +124,21 @@ def train(config: ExpConfig):
             running_loss += loss.item()
             
             if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and model.coder is None and config.rank == 0:
+                print(f'Save image input at step {config.current_step}')
+                graph.to_file(config.image_sample_path('input'))
                 print(f'Save image output at step {config.current_step}')
                 results.set_device('cpu')
-                results.squarelize().to_file(config.image_sample_path('output'))
-                results.circle_mask('green', 0.3).squarelize().to_file(config.image_sample_path('output_with_mask'))
-                graph.set_device('cpu')
-                interleave = TGraph.reconstruct(graph, results, True)
-                interleave.squarelize().to_file(config.image_sample_path('reconstruction'))
+                if compressor is not None:
+                    results = compressor.decode(results)
+                    if compressor.config.binary:
+                        results._value.sigmoid_()
+                        results._binary = True
+
+                results.to_file(config.image_sample_path('output'))
+                # results.circle_mask('green', 0.3).to_file(config.image_sample_path('output_with_mask'))
+                # graph.set_device('cpu')
+                # interleave = TGraph.reconstruct(graph, results, True)
+                # interleave.squarelize().to_file(config.image_sample_path('reconstruction'))
 
         step(config, optim_parts, model.backbone)
         running_loss = distributed_average(running_loss, config.device_id)

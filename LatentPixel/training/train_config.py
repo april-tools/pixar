@@ -98,7 +98,7 @@ class ExpConfig:
     num_channel: int = 3
     binary: bool = False
     rgb: bool = True
-    latent_norm: bool = True # whether to normalize the input in the latent space
+    latent_norm: bool = False # whether to normalize the input in the latent space
     
     torch_compile: bool = False # whether to compile the model into a static graph (refer to pytorch 2.0)
     dynamic_shape: bool = False # whether to use dynamic input shape while compiling
