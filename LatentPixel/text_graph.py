@@ -3,7 +3,7 @@ from typing import Any
 
 import os
 from os import PathLike
-from math import sqrt
+from math import sqrt, ceil
 from functools import cache
 
 import torch
@@ -43,6 +43,8 @@ from pixel import Encoding, PIXELForPreTrainingOutput
 
 logger = logging.get_logger(__name__)
 
+BINARY_THRESHOLD = 0.5
+
 @cache
 def square_number(num: int) -> tuple[int, int]:
     upper = int(sqrt(num)) + 1
@@ -64,6 +66,7 @@ class TGraph:
     _patch_len: int = 1
     text: str | list[str] | None = None
     _num_text_patches: int | list[int] | None = None
+    _binary: bool = False
 
     _attention_mask: torch.Tensor | None = None
     _text_mask: torch.Tensor | None = None
@@ -79,6 +82,7 @@ class TGraph:
     # useful transforms
     _pil2val = Compose([PILToTensor()])
     _val2pil = Compose([ToPILImage(mode='RGB')])
+    _val2pil_binary = Compose([ToPILImage(mode=None)])
     _pix_normalizer = Compose([Normalize(PIXEL_DEFAULT_IMAGE_MEAN, PIXEL_DEFAULT_IMAGE_STD)])
     _inv_pix_normalizer = Compose([Normalize(- PIXEL_DEFAULT_IMAGE_MEAN / PIXEL_DEFAULT_IMAGE_STD, 1 / PIXEL_DEFAULT_IMAGE_STD)])
 
@@ -150,6 +154,7 @@ class TGraph:
         num_workers: int = 1
     ) -> None:
         TGraph._patch_len = patch_len
+        TGraph._binary = binary
         config = RenderConfig(
             dpi=dpi,
             font_size=font_size,
@@ -160,10 +165,10 @@ class TGraph:
             rgb=rgb,
             mask_ratio=mask_ratio,
             max_seq_length=max_seq_length,
-            binary=binary
+            binary=binary,
+            patch_len=patch_len
         )
-        init_render(config, num_worker=num_workers)
-        return
+        return init_render(config, num_worker=num_workers)
     
     @property
     def patch_len(self) -> int:
@@ -207,6 +212,8 @@ class TGraph:
             return None
         if self.device is not None:
             value = value.to(self.device)
+        if self._binary:
+            return (value > BINARY_THRESHOLD).long()
         if self._half:
             value = value.half()
         else:
@@ -243,10 +250,10 @@ class TGraph:
             return self._attention_mask
         
         if isinstance(self.num_text_patches, int):
-            self._attention_mask = get_attention_mask(self.num_text_patches, get_num_patches())
+            self._attention_mask = get_attention_mask(self.num_text_patches, self.patch_len, get_num_patches())
             return self._attention_mask
         
-        masks = [get_attention_mask(num, get_num_patches()).unsqueeze(0) for num in self.num_text_patches]
+        masks = [get_attention_mask(num, self.patch_len, get_num_patches()).unsqueeze(0) for num in self.num_text_patches]
         self._attention_mask = torch.cat(masks, dim=0)
         return self._attention_mask
     
@@ -465,11 +472,14 @@ class TGraph:
         return graph
 
     def _to_PIL(self, value: torch.Tensor) -> Image:
+        if self._binary:
+            value = (value.sigmoid() > BINARY_THRESHOLD).float()
+            return self._val2pil_binary(value)
         return self._val2pil(value.clamp(0, 1))
 
     def to_PIL(self, square: bool=True) -> Image | list[Image]:
         if square:
-            value = self._squarelize(self._value)
+            value = self._squarelize(self.value)
         else:
             value = self.value
         
@@ -553,7 +563,7 @@ class TGraph:
         return cls.from_PIL(image)
     
     def _to_file(self, path: str | PathLike, value: torch.Tensor) -> None:
-        img = self._val2pil(value.clamp(0, 1))
+        img = self._to_PIL(value)
         img.save(path, 'PNG')
 
     def to_file(self, path: str | PathLike, square: bool=True) -> None:
@@ -563,30 +573,41 @@ class TGraph:
             value = self.value
                     
         if value.dim() == 3:
-            return self._to_file(path, self._value)
+            return self._to_file(path, value)
         
         os.makedirs(path, exist_ok=True)
         for idx, val in enumerate(value):
             file_path = os.path.join(path, f'{idx}.png')
             self._to_file(file_path, val)
+            
+    def binary(self) -> None:
+        if self._value.dim() == 3:  # c, h, w
+            val = self._value.mean(dim=0, keepdim=True)
+        elif self._value.dim() == 4:    # bs, c, h, w
+            val = self._value.mean(dim=1, keepdim=True)
+        
+        self._value = (val > BINARY_THRESHOLD).long()
 
     @classmethod
     def from_text(cls, text: str | list[str], **kwargs) -> TGraph:
         encods = render_text(text, **kwargs)
         graph = cls()
+        graph.patch_len = cls._patch_len
+        graph._binary = cls._binary
         if isinstance(encods, Encoding):
             graph._value = torch.tensor(encods.pixel_values / 255, dtype=torch.float).permute(2, 0, 1)
-            graph.num_text_patches = encods.num_text_patches
+            graph.binary() if graph._binary else ...
+            graph.num_text_patches = ceil((encods.num_text_patches + 1) / cls._patch_len) # Add 1 for [SEP] token (black patch)
             graph.text = text
             return graph
         
         imgs = [torch.tensor(encod.pixel_values / 255, dtype=torch.float).permute(2, 0, 1).unsqueeze(0) for encod in encods]
         graph._value = torch.cat(imgs, dim=0).contiguous()
+        graph.binary() if graph._binary else ...
 
-        nums = [encod.num_text_patches for encod in encods]
+        nums = [ceil((encod.num_text_patches + 1) / cls._patch_len) for encod in encods]
         graph.num_text_patches = nums
         graph.text = text
-
         return graph
     
     def _squarelize(self, value: torch.Tensor) -> torch.Tensor:
@@ -666,7 +687,7 @@ class TGraph:
     
     @torch.no_grad()
     def ocr(self) -> str | list[str]:
-        imgs = self.to_PIL()
+        imgs = self.to_PIL(square=False)
         if isinstance(imgs, list):
             self.text = [pytesseract.image_to_string(img) for img in imgs]
         else:

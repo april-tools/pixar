@@ -36,7 +36,7 @@ srun torchrun \
     train.py \
     --model 'CNNAutoencoder' \
     --exp_type 'Compressor' \
-    --coder_path storage/autoencoders/r4h4c3r1hc64 \
+    --compressor_path storage/autoencoders/r4h4c3r1hc64 \
     --render_path storage/pixel-base \
     --dataset_paths storage/enwiki storage/bookcorpus \
     --optim 'AdamW' \
@@ -45,18 +45,19 @@ srun torchrun \
     --beta2 0.999 \
     --decay 0.05 \
     --total_steps 10000 \
-    --save_freq 500 \
+    --save_freq 1000 \
     --best_save_freq 50 \
     --seed 42 \
     --batch_size 256 \
     --sub_size 16 \
     --font_file 'GoNotoCurrent.ttf' \
-    --eval_freq 200 \
+    --eval_freq 1000 \
     --dpi 120 \
     --pixels_per_patch 16 \
     --min_len 900 \
     --max_seq_length 720 \
-    --patch_len 6 \
+    --patch_len 5 \
+    --num_channel 3 \
     --mix_precision fp16 \
     --mp_workers 8 \
     --num_gpu_per_node $GPU_PER_NODE \

@@ -32,6 +32,7 @@ class RenderConfig:
     mask_ratio: float = 0.25
     binary: bool = False
     max_seq_length: int = 529
+    patch_len: int = 1
 
     def to_dict(self) -> dict:
         return asdict(self)
