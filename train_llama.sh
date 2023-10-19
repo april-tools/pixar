@@ -56,9 +56,9 @@ srun torchrun \
     train.py \
     --model 'LatentGPT2' \
     --exp_type '24D_gpt2_1' \
-    --backbone_path storage/llama/ \
-    --render_path storage/pixel-base \
-    --dataset_paths storage/bookcorpus \
+    --backbone_path ../../shared/gpt2 \
+    --render_path ../../shared/pixel-base \
+    --dataset_paths ../../shared/datasets/bookcorpus \
     --optim 'AdamW' \
     --lr 1.5e-4 \
     --beta1 0.99 \
@@ -74,8 +74,6 @@ srun torchrun \
     --font_file 'GoNotoCurrent.ttf' \
     --dpi 180 \
     --pixels_per_patch 24 \
-    --image_size 3 24 12696 \
-    --latent_size 3 24 12696 \
     --mix_precision fp16 \
     --half_coder true \
     --mp_workers 8 \
