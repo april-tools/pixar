@@ -404,8 +404,8 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
         if config.half_coder and model.compressor is not None:
             output('Half the compressor')
             model.compressor.half()
-            if not config.on_cpu:
-                model.compressor.to(config.device_id)
+        if not config.on_cpu and model.compressor is not None:
+            model.compressor.to(config.device_id)
 
         params = model.get_backbone_parameters()
     else:
