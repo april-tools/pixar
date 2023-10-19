@@ -82,9 +82,10 @@ class LatentModel(nn.Module):
             if self.num_channel != 1:
                 msgs.append('Number of input channel should be 1 when binary')
                 ok = False
-            if self.compressor.config.num_channel != 1:
-                msgs.append('Number of compressor\'s channel shold be 1 when binary')
-                ok = False
+            if self.compressor is not None:
+                if self.compressor.config.num_channel != 1:
+                    msgs.append('Number of compressor\'s channel shold be 1 when binary')
+                    ok = False
                 
         return msgs, ok
         
@@ -103,9 +104,9 @@ class LatentModel(nn.Module):
         if self.has_decoder:
             recon = self.decode(recon)
 
-        if self.binary:
-            recon._value.sigmoid_()
-            recon._binary = True
+            if self.binary:
+                recon._value.sigmoid_()
+                recon._binary = True
 
         recon.loss = loss
         

@@ -308,10 +308,6 @@ class LatentLlama(LatentModel):
         return
     
     def delete_unused_layers(self) -> None:
-        if self.backbone.wte is not None:
-            print('Delete the embedding layer')
-            del self.backbone.wte
-            self.backbone.wte = None
         if self.compressor is None:
             print('No unused layers to delete')
             return
