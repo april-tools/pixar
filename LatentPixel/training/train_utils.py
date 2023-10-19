@@ -374,7 +374,8 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
                 compressor_name=config.compressor_name,
                 num_channels=config.num_channel,
                 patch_size=config.pixels_per_patch,
-                patch_len=config.patch_len
+                patch_len=config.patch_len,
+                binary=config.binary
             )
             model.init_connection_layers()
             model.delete_unused_layers()
@@ -621,7 +622,7 @@ def save_exp(model: LatentModel | Compressor, config: ExpConfig, name: str, disc
     
     if config.rank == 0:
         model.save_backbone(config.backbone_ckpt_path(name))
-        model.save_coder(config.coder_ckpt_path(name))
+        model.save_compressor(config.coder_ckpt_path(name))
         if discriminator is not None:
             output(f'Saving the {name} discriminator at step {config.current_step}')
             if isinstance(discriminator, DDP):

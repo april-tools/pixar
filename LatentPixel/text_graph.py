@@ -473,8 +473,7 @@ class TGraph:
 
     def _to_PIL(self, value: torch.Tensor) -> Image:
         if self._binary:
-            value = (value.sigmoid() > BINARY_THRESHOLD).float()
-            return self._val2pil_binary(value)
+            return self._val2pil_binary(value.float())
         return self._val2pil(value.clamp(0, 1))
 
     def to_PIL(self, square: bool=True) -> Image | list[Image]:
