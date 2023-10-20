@@ -59,7 +59,7 @@ def init_exp(config: ExpConfig) -> tuple[LatentModel, DataLoader, DataLoader, di
                 batch_size=config.sub_size,
                 num_workers=config.mp_workers,
                 render_config=config.render_config,
-                min_len=config.min_len,
+                max_len=config.max_len,
                 mask_ratio=config.mask_ratio,
                 mask_type=config.mask_type,
                 n_skip=(config.current_step - 1) * config.num_grad_acc_step,
@@ -124,9 +124,9 @@ def train(config: ExpConfig):
 
             running_loss += loss.item()
             
-            if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and config.rank == 0:
+            if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and config.rank % 4 == 0:
                 print(f'Save image input at step {config.current_step}')
-                graph.to_file(config.image_sample_path('input'))
+                graph.to_file(config.image_sample_path(f'input{config.rank}'))
                 print(f'Save image output at step {config.current_step}')
                 results.set_device('cpu')
                 if compressor is not None:
@@ -135,7 +135,7 @@ def train(config: ExpConfig):
                         results._value.sigmoid_()
                         results._binary = True
 
-                results.to_file(config.image_sample_path('output'))
+                results.to_file(config.image_sample_path(f'output{config.rank}'))
                 # results.circle_mask('green', 0.3).to_file(config.image_sample_path('output_with_mask'))
                 # graph.set_device('cpu')
                 # interleave = TGraph.reconstruct(graph, results, True)

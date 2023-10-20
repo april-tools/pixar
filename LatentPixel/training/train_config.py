@@ -92,7 +92,7 @@ class ExpConfig:
     pixels_per_patch: int = 16
     patch_len: int = 1
     max_seq_length: int = 529
-    min_len: int = 800
+    max_len: int = 1000  # max number of characters in one image
     compress_ratio: int = 8
     font_file: str = 'GoNotoCurrent.ttf'
     num_channel: int = 3
@@ -329,7 +329,7 @@ class ExpConfig:
             name
         )
         if not exists(path):
-            makedirs(path, exist_ok=False)
+            makedirs(path, exist_ok=True)
         return path
     
     def image_sample_path(self, name: str) -> str | PathLike:

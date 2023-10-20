@@ -35,32 +35,36 @@ def render_batched_text(batch: list[dict[str, str]], mask_ratio: float, mask_typ
 
     return img
         
-def collate_text(batch: dict, min_len: int, max_len: int | None = None) -> list[str]:
+def collate_text(batch: dict, max_len: int | None = None) -> list[str]:
     texts: list[str] = batch['text']
-    splitted = []
-    for text in texts:
-        splitted += text.strip().split('\n')
-
-    results = []
-    block = []
-    length = 0
-    for sent in splitted:
-        length += len(sent)
-        block += [sent]
-        if length >= min_len:
-            length = 0
-            results.append(' '.join(block))
-            block = []
+    docs = []
+    for txt in texts:
+        docs.append(txt.split('\n'))
     
-    if len(block) > 0:
-        results.append(' '.join(block))
+    samples = []
+    for doc in docs:
+        sents = []
+        length = 0
+        idx = 0
+        while idx < len(doc):
+            sent = doc[idx]
+            l = len(sent)
+            if l + length < max_len:
+                length += l
+                sents.append(sent.strip())
+                idx += 1
+            elif l >= max_len:
+                samples.append(' '.join(sents))
+                samples.append(sent)
+                idx += 1
+                length = 0
+                sents = []
+            else:
+                samples.append(' '.join(sents))
+                length = 0
+                sents = []
 
-    if max_len is not None:
-        chunked = [sent[:max_len] for sent in results]
-    else:
-        chunked = results
-
-    return {'text': chunked}
+    return {'text': samples}
 
 def collate_glue(batch: dict) -> TGraph:
     merged = defaultdict(list)
@@ -94,8 +98,7 @@ def get_pixel_pretrain_dataloader(
         mask_type: str,
         render_config: RenderConfig = None,
         n_skip: int = 0,
-        min_len: int = 400,
-        max_len: int | None = None,
+        max_len: int = 800,
         streaming: bool = True,
         rank: int = None, 
         world_size: int = None,
@@ -133,7 +136,7 @@ def get_pixel_pretrain_dataloader(
             
     print('max_len', max_len)
     dataset = dataset.map(
-        partial(collate_text, min_len=min_len, max_len=max_len), 
+        partial(collate_text, max_len=max_len), 
         batch_size=1000, 
         drop_last_batch=True, 
         batched = True,

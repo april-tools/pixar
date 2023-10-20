@@ -37,18 +37,18 @@ srun torchrun \
     --backbone_path storage/checkpoints/24D_gpt2_1/lpixel_pretrain/LatentGPT2/20230810-192053/2000/backbone \
     --compressor_path storage/compressors/CNNAutoencoders/r4h8c1hc16g8b \
     --compressor_name CNNAutoencoder \
-    --dataset_paths storage/enwiki storage/bookcorpus \
+    --dataset_paths storage/enwiki storage/fbookcorpusopen \
     --optim 'AdamW' \
-    --lr 1.5e-4 \
-    --beta1 0.99 \
-    --beta2 0.999 \
-    --decay 0.05 \
+    --lr 6e-4 \
+    --beta1 0.9 \
+    --beta2 0.95 \
+    --decay 0.1 \
     --total_steps 200 \
     --save_freq 100 \
     --best_save_freq 50 \
     --seed 42 \
-    --batch_size 256 \
-    --sub_size 8 \
+    --batch_size 384 \
+    --sub_size 24 \
     --font_file PixeloidSans-mLxMm.ttf \
     --dpi 80 \
     --pixels_per_patch 8 \
@@ -57,7 +57,7 @@ srun torchrun \
     --binary true \
     --rgb false \
     --max_seq_length 2000 \
-    --min_len 1600 \
+    --max_len 3000 \
     --mix_precision fp16 \
     --half_coder false \
     --mp_workers 8 \

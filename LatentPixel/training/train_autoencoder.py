@@ -47,7 +47,7 @@ def init_exp(config: ExpConfig) -> tuple[Compressor, DataLoader, DataLoader, dic
                 rank=config.rank,
                 world_size=config.world_size,
                 seed=config.seed,
-                min_len=config.min_len
+                max_len=config.max_len
             )
             dev_loader = None
         case _:
