@@ -113,14 +113,14 @@ def get_pixel_pretrain_dataloader(
         dataset_sizes = [ds._info.splits.total_num_examples for ds in datasets]
         combined_size = sum(dataset_sizes)
         dataset_sampling_probs = [d_size / combined_size for d_size in dataset_sizes]
+        
+        if rank is not None:
+            print(f'Split dataset for parallel training for rank {rank}/{world_size}')
+            datasets = [split_dataset_by_node(dataset, rank=rank, world_size=world_size) for dataset in datasets]
 
         if streaming:
             print('Convert the dataset into a streaming dataset')
             datasets = [dataset.to_iterable_dataset(num_shards=128) for dataset in datasets]
-
-        if rank is not None:
-            print('Split dataset for parallel training')
-            datasets = [split_dataset_by_node(dataset, rank=rank, world_size=world_size) for dataset in datasets]
 
         print('Begin to interleave datasets')
         dataset = interleave_datasets(datasets, probabilities=dataset_sampling_probs, seed=seed, stopping_strategy='all_exhausted')
