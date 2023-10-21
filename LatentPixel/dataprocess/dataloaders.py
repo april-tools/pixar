@@ -2,19 +2,49 @@ import os
 from functools import partial
 from collections import defaultdict
 import random
+from typing import Iterator, Any
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import IterableDataset as ItDataset
+from torch import distributed
 from ..text_graph import TGraph
-from ..config import ModelType, RenderConfig
+from ..config import ModelType, RenderConfig, PretrainDatasetConfig
 from ..utils import seed_everyting, timeit
 from ..training.train_config import GLUE_META, ExpConfig
 from ..metrics import Metric
+from .preprocess import preprocess_pretrain_data
 from tqdm import tqdm
 import numpy as np
 
-from datasets import load_dataset, interleave_datasets, load_from_disk
+from datasets import load_dataset, interleave_datasets, load_from_disk, IterableDataset
 from datasets.distributed import split_dataset_by_node
+
+
+class InfDataset(ItDataset, Iterator):
+    def __init__(self, dataset: IterableDataset, n_skip: int = 0) -> None:
+        super().__init__()
+        self.dataset = dataset
+        if n_skip > 0:
+            self.skipped = dataset.skip(n_skip)
+        self.n_skip = n_skip
+        self.iter = None
+    
+    def __iter__(self) -> Iterator:
+        if self.n_skip > 0:
+            self.iter = iter(self.skipped)
+            self.n_skip = 0
+        else:
+            self.iter = iter(self.dataset)
+        return self
+
+    def __next__(self) -> Any:
+        try:
+            nxt = next(self.iter)
+        except StopIteration:
+            iter(self)
+            nxt = next(self.iter)
+        return nxt
 
 def dataloader_init_fn(worker_id, seed: int, render_config: RenderConfig) -> None:
     seed_everyting(seed)
@@ -88,6 +118,58 @@ def collate_glue(batch: dict) -> TGraph:
     tgraph.attention_mask   # init the attention mask
     
     return tgraph
+
+def get_pretrain_dataloader(
+    data_conf: PretrainDatasetConfig,
+    render_conf: RenderConfig,
+    cache_path: str | os.PathLike,
+    batch_size: int,
+    n_skip: int,
+    num_workers: int,
+    rank: int,
+    world_size: int,
+    mask_ratio: float = 0.25,
+    mask_type: str = 'rand'
+) -> DataLoader:
+    # Check whether this dataset is cached
+    cache_folder = os.path.join(cache_path, data_conf.signature())
+    if os.path.isdir(cache_folder):
+        print(f'Find cached path at {cache_folder}')
+        dataset = load_from_disk(os.path.join(cache_folder, 'data'))
+    else:
+        print(f'No cached data found, begin to preprocess on rank {0}')
+        if rank == 0:
+            dataset = preprocess_pretrain_data(data_conf)
+            dataset.save_to_disk(os.path.join(cache_folder, 'data'), num_shards=data_conf.num_shards)
+            data_conf.save(cache_folder)
+            print(f'Preprocessed dataset saved to {cache_folder}')
+
+        if world_size > 1:
+            distributed.barrier()
+        dataset = load_from_disk(os.path.join(cache_folder, 'data'))
+        print(f'Dataset loaded on rank {rank}')
+        
+    dataset = split_dataset_by_node(
+        dataset=dataset, 
+        rank=rank,
+        world_size=world_size
+    )
+
+    num_samples = len(dataset)
+
+    dataset = dataset.to_iterable_dataset(num_shards=256)
+    dataset = InfDataset(dataset, n_skip=n_skip % num_samples)
+    loader = DataLoader(
+        dataset=dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        prefetch_factor=4,
+        collate_fn=partial(render_batched_text, mask_ratio=mask_ratio, mask_type=mask_type),
+        worker_init_fn=partial(dataloader_init_fn, seed=data_conf.seed, render_config=render_conf),
+        drop_last=True
+    )
+    TGraph.init_render(**render_conf)
+    return loader
 
 def get_pixel_pretrain_dataloader(
         paths: list[str | os.PathLike],

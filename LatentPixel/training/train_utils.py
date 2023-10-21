@@ -447,6 +447,14 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
     else:
         raise KeyError(f'Invalid scheduler type {config.scheduler}')
     
+    optim_path = config.load_optim_path()
+    if optim_path:
+        optim.load_state_dict(torch.load(optim_path, map_location=config.device_id))
+        print(f'Load the optimizer states from {optim_path}')
+    scheduler_path = config.load_scheduler_path()
+    if scheduler_path:
+        scheduler.load_state_dict(torch.load(scheduler_path, map_location=config.device_id))
+    
     # init the scheduler for mixedprecision training
     scaler = None
     if config.mix_precision == 'fp16':
@@ -607,7 +615,7 @@ def prepare_gan(config: ExpConfig) -> tuple[LatentModel, dict, Discriminator, di
 
     return model, optim_parts, disc, disc_optim_parts
 
-def save_exp(model: LatentModel | Compressor, config: ExpConfig, name: str, discriminator: Discriminator | None = None) -> None:
+def save_exp(model: LatentModel | Compressor, config: ExpConfig, name: str, discriminator: Discriminator | None = None, optim_parts: dict | None = None) -> None:
     if config.rank != 0:
         return
     output(f'Saving the {name} model at step {config.current_step}')
@@ -620,21 +628,30 @@ def save_exp(model: LatentModel | Compressor, config: ExpConfig, name: str, disc
             output(config)
         return
     
-    if config.rank == 0:
-        model.save_backbone(config.backbone_ckpt_path(name))
-        model.save_compressor(config.coder_ckpt_path(name))
-        if discriminator is not None:
-            output(f'Saving the {name} discriminator at step {config.current_step}')
-            if isinstance(discriminator, DDP):
-                discriminator.module.save(config.discriminator_ckpt_path(name))
-            else:
-                discriminator.save(config.discriminator_ckpt_path(name))
-        try:
-            config.save(name)
-        except:
-            output(f'failed to save the config')
-            output(config)
+    model.save_backbone(config.backbone_ckpt_path(name))
+    model.save_compressor(config.coder_ckpt_path(name))
+    if discriminator is not None:
+        output(f'Saving the {name} discriminator at step {config.current_step}')
+        if isinstance(discriminator, DDP):
+            discriminator.module.save(config.discriminator_ckpt_path(name))
+        else:
+            discriminator.save(config.discriminator_ckpt_path(name))
+    try:
+        config.save(name)
+    except:
+        output(f'failed to save the config')
+        output(config)
 
+    # optim_parts = {
+    #     'optim': optim,
+    #     'scheduler': scheduler,
+    #     'scaler': scaler
+    # }
+    if optim_parts:
+        optim: Optimizer = optim_parts['optim']
+        scheduler: LRScheduler = optim_parts['scheduler']
+        torch.save(optim.state_dict(), config.optim_path())
+        torch.save(scheduler.state_dict(), config.scheduler_path())
 
 class InfLoader:
     

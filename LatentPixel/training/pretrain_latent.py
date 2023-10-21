@@ -18,7 +18,7 @@ from .train_config import (
 )
 from ..text_graph import TGraph
 from ..utils import init_render, timeit, get_num_patches
-from ..dataprocess import get_pixel_pretrain_dataloader
+from ..dataprocess import get_pretrain_dataloader
 from ..modeling import (
     LatentModel,
     LPixelForMLM,
@@ -54,18 +54,17 @@ def init_exp(config: ExpConfig) -> tuple[LatentModel, DataLoader, DataLoader, di
     # init dataloaders
     match config.task:
         case 'lpixel_pretrain':
-            train_loader = get_pixel_pretrain_dataloader(
-                paths=config.dataset_paths,
-                batch_size=config.sub_size,
+            train_loader = get_pretrain_dataloader(
+                data_conf=config.pretrain_dataset_config,
+                render_conf=config.render_config,
+                cache_path=config.dataset_cache_path,
+                batch_size=config.batch_size,
+                n_skip=config._num_trained_samples // config.world_size,
                 num_workers=config.mp_workers,
-                render_config=config.render_config,
-                max_len=config.max_len,
-                mask_ratio=config.mask_ratio,
-                mask_type=config.mask_type,
-                n_skip=(config.current_step - 1) * config.num_grad_acc_step,
                 rank=config.rank,
                 world_size=config.world_size,
-                seed=config.seed,
+                mask_ratio=config.mask_ratio,
+                mask_type=config.mask_type
             )
             dev_loader = None
         case _:
@@ -152,6 +151,7 @@ def train(config: ExpConfig):
         dist_sync(config)
 
         config.current_step += 1
+        config._num_trained_samples += config.batch_size
 
     save_exp(model, config, 'last')
     dist_sync(config)

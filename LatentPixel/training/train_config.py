@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 from os import PathLike, makedirs
 from os.path import join, exists
+from pathlib import Path
 from time import strftime
 from collections import defaultdict
 from typing import Any, TypeVar
@@ -9,7 +10,7 @@ from typing import Any, TypeVar
 from dataclasses import dataclass, field, asdict
 import json
 
-from ..config import RenderConfig
+from ..config import RenderConfig, PretrainDatasetConfig
 from ..utils import params2dict
 from ..metrics import (
     MC,
@@ -56,6 +57,8 @@ class ExpConfig:
     render_path: str | PathLike = RENDER_PATH
     checkpoint_path: str | PathLike = CHECK_PATH
     dataset_paths: list[str | PathLike] = field(default_factory=lambda: ['']) 
+    dataset_cache_path: str | PathLike = 'storage/cache'
+    dataset_num_shards: int = 256
     seed: int = SEED
     exp_type: str = 'debug'
     task: str = 'lpixel_pretrain'
@@ -80,6 +83,7 @@ class ExpConfig:
     mask_ratio: float = 0.25
     mask_type: str = 'span'
     total_steps: int = 4000 # number of parameter update steps
+    this_train_steps: int = 1000    # number of steps of this train
     max_token: int = 512    # 1024 for gpt2, 2048 for llama 7b
     eval_freq: int = 100
     begin_eval: int = 0
@@ -132,6 +136,7 @@ class ExpConfig:
     _continued: bool = False
     _name: str = None
     _epoch: int = 1
+    _num_trained_samples: int = 0
     _num_grad_acc_step: int = -1
     _num_gpu: int = -1
     _rank: int = -1
@@ -143,7 +148,8 @@ class ExpConfig:
     _max_metrics: defaultdict = field(default_factory=dict) 
     _max_metrics_step: defaultdict = field(default_factory=dict) 
     _min_metrics: defaultdict = field(default_factory=dict) 
-    _min_metrics_step: defaultdict = field(default_factory=dict) 
+    _min_metrics_step: defaultdict = field(default_factory=dict)
+    _begin_ckpt_path: str = None
     
     def update_metric(self, name: str, value: float):
         if name not in self._metrics:
@@ -164,6 +170,17 @@ class ExpConfig:
             self._min_metrics[name] = value
             self._min_metrics_step[name] = self.current_step
             print(f'Minimum value of {name} {value} updated at step {self.current_step}')
+            
+    @property
+    def pretrain_dataset_config(self) -> PretrainDatasetConfig:
+        self.dataset_paths.sort()
+        return PretrainDatasetConfig(
+            dataset_paths=self.dataset_paths,
+            max_len=self.max_len,
+            seed=self.seed,
+            shuffle=self.shuffle_dataset,
+            num_shards=self.dataset_num_shards
+        )
 
     @property
     def currnt_gan_ratio(self) -> float:
@@ -388,6 +405,28 @@ class ExpConfig:
             return None 
         return exp_config
     
+    def continue_training(self) -> ExpConfig | None:
+        ckpt_path = Path(self.backbone_path).parent
+        old = self.from_checkpoint(ckpt_path)
+        if old:
+            self.current_step = old.current_step
+            self._num_trained_samples = old._num_trained_samples
+            self.total_steps = old.total_steps
+            self._begin_ckpt_path = ckpt_path
+            print(f'Find checkpoint of previous training, continue training at step {self.current_step}/{self.total_steps}')
+            print(f'There are {self._num_trained_samples} samples trained.')
+        return old
+    
+    def load_optim_path(self) -> str | None:
+        if self._begin_ckpt_path:
+            return join(self._begin_ckpt_path, 'optim.bin')
+        return None
+    
+    def load_scheduler_path(self) -> str:
+        if self._begin_ckpt_path:
+            return join(self._begin_ckpt_path, 'scheduler.bin')
+        return None
+
 def init_wandb(config: ExpConfig) -> None:
     wandb.login(key=os.environ['WANDB_KEY'])
     wandb.init(

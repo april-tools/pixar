@@ -6,6 +6,7 @@ from LatentPixel.training.train_utils import init_dist_environ
 
 if __name__ == '__main__':
     config = get_config()
+    config.continue_training()  # check if it's a continued training
     print('Training config initialized')
     init_dist_environ(config)
     print(config.__dict__)
