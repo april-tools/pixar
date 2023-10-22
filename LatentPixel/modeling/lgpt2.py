@@ -289,8 +289,11 @@ class LatentGPT2(LatentModel):
         print(f'gpt2 backbone saved to {path}')
             
     def latent_forward(self, img: TGraph) -> TGraph:
-        img_values = img.value if self.compressor else img.value * 2 - 1    # map image from [0, 1] range to [-1, 1] range
-        img_values = img_values.float()
+        target = img._value.float()     # target should within range [0, 1]
+        if self.compressor is None:
+            img_values = target * 2 - 1 # map values from [0, 1] range to [-1, 1] range
+        else:
+            img_values = target
         output: BaseModelOutputWithPastAndCrossAttentions = self.backbone.forward(
             attention_mask=img.attention_mask,
             inputs_embeds=img_values
@@ -305,7 +308,7 @@ class LatentGPT2(LatentModel):
         # loss = (pred[..., :-patch_width] - img_values[..., patch_width:]) ** 2
         # loss = (loss * attention_mask).sum() / (attention_mask.sum() * self.num_latent_channel)  # mean loss on removed patches
 
-        loss = self.forward_loss(pred, img_values, img.attention_mask)
+        loss = self.forward_loss(pred, target, img.attention_mask)
 
         if not self.binary and self.compressor is None:
             pred = (pred + 1) / 2   #   map value from [-1, 1] to [0, 1]

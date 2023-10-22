@@ -688,12 +688,13 @@ def get_CosineAnnealingWithLrWarmUpLR(optimizer: Optimizer, warmup_steps:int, mi
     return SequentialLR(optimizer, [lr1, lr2], milestones=[warmup_steps], verbose=verbose)
 
 def get_LrScheduler(optimizer: Optimizer, conf: ExpConfig) -> LRScheduler:
+    verbose = True if conf.rank == 0 else False
     match conf.scheduler:
         case 'CosineAnnealingLR':
             if conf.warm_up_step > 0:
-                scheduler = get_CosineAnnealingWithLrWarmUpLR(optimizer, warmup_steps=conf.warm_up_step, min_lr=0.1*conf.lr, total_steps=conf.total_steps, verbose=True)
+                scheduler = get_CosineAnnealingWithLrWarmUpLR(optimizer, warmup_steps=conf.warm_up_step, min_lr=0.1*conf.lr, total_steps=conf.total_steps, verbose=verbose)
             else:
-                scheduler = CosineAnnealingLR(optimizer, T_max=conf.total_steps, eta_min=0.1*conf.lr, verbose=True)
+                scheduler = CosineAnnealingLR(optimizer, T_max=conf.total_steps, eta_min=0.1*conf.lr, verbose=verbose)
         case '':
             scheduler = None
         case _:
