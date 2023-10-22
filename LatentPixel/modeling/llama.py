@@ -247,7 +247,7 @@ class LatentLlama(LatentModel):
         print(f'Llama backbone saved to {path}')
             
     def latent_forward(self, img: TGraph) -> TGraph:
-        target = img._value.float()     # target should within range [0, 1]
+        target = img.value.float()     # target should within range [0, 1]
         if self.compressor is None:
             img_values = target * 2 - 1 # map values from [0, 1] range to [-1, 1] range
         else:
@@ -312,7 +312,9 @@ class LatentLlama(LatentModel):
     
     def delete_unused_layers(self) -> None:
         if self.compressor is None:
-            print('No unused layers to delete')
+            print('Delete the token embeddings.')
+            del self.backbone.embed_tokens
+            self.backbone.embed_tokens = None
             return
         print('delete the decoder')
         del self.compressor.decoder

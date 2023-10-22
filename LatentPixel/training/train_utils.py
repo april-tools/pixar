@@ -44,7 +44,8 @@ from ..modeling import (
     Discriminator,
     DiscriminatorConfig,
     CNNAutoencoder,
-    Compressor
+    Compressor,
+    LatentLlama
 )
 from ..utils import timeit, init_render
 from ..text_graph import TGraph
@@ -378,12 +379,23 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
                 binary=config.binary
             )
             model.delete_unused_layers()
+        case 'LatentLlama':
+            output('init LatentLlama model')
+            model: LatentLlama = LatentLlama(
+                compressor_path=config.compressor_path,
+                backbone_path=config.backbone_path,
+                compressor_name=config.compressor_name,
+                num_channels=config.num_channel,
+                patch_size=config.pixels_per_patch,
+                patch_len=config.patch_len,
+                binary=config.binary
+            )
+            model.delete_unused_layers()
         case 'CNNAutoencoder':
             output('Initializing the CNNAutoencoder')
             output(f'Pathch length:{config.patch_len}')
             model = CNNAutoencoder(path=config.compressor_path)
             output(str(model.config))
-            
         case _:
             raise NotImplementedError(f'Unrecognizable model type {config.model}')
     
