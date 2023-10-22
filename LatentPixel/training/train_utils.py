@@ -1,5 +1,5 @@
 import os
-from typing import Any
+from typing import Any, Dict, Optional
 from functools import partial
 from contextlib import ExitStack
 import json
@@ -10,7 +10,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import Optimizer, AdamW, SGD
-from torch.optim.lr_scheduler import LRScheduler, CosineAnnealingLR
+from torch.optim.lr_scheduler import LRScheduler, CosineAnnealingLR, LinearLR, SequentialLR
 # scale gradient to avoid gradient underflow while doing mixed-precision training
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -58,7 +58,7 @@ def init_progress_bar(config: ExpConfig) -> tqdm:
         _config = config
     if config.rank == 0:
         _progress_bar = tqdm(
-            total=config.total_steps + 1 - config.current_step,
+            total=config.total_steps,
             initial=config.current_step,
             dynamic_ncols=True
         )
@@ -377,7 +377,6 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
                 patch_len=config.patch_len,
                 binary=config.binary
             )
-            model.init_connection_layers()
             model.delete_unused_layers()
         case 'CNNAutoencoder':
             output('Initializing the CNNAutoencoder')
@@ -421,6 +420,7 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
                 lr=config.lr,
                 betas=(config.beta1, config.beta2),
                 weight_decay=config.decay,
+                eps=1e-8
             )
         case 'sgd':
             output('Init SGD optimizer')
@@ -438,14 +438,16 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
         model = wrap_model(model, config)
 
     # init scheduler
-    if config.scheduler.lower() == 'cosineannealinglr':
-        scheduler = CosineAnnealingLR(
-            optimizer=optim,
-            T_max=config.total_steps,
-            eta_min=0.1 * config.lr # from llama paper
-        )
-    else:
-        raise KeyError(f'Invalid scheduler type {config.scheduler}')
+    scheduler = get_LrScheduler(optim, config)
+
+    optim_path = config.load_optim_path()
+    if optim_path:
+        optim.load_state_dict(torch.load(optim_path, map_location=f'cuda:{config.device_id}'))
+        print(f'Load the optimizer states from {optim_path}')
+
+    scheduler_path = config.load_scheduler_path()
+    if scheduler_path:
+        scheduler.load_state_dict(torch.load(scheduler_path, map_location=f'cuda:{config.device_id}'))
     
     # init the scheduler for mixedprecision training
     scaler = None
@@ -607,7 +609,7 @@ def prepare_gan(config: ExpConfig) -> tuple[LatentModel, dict, Discriminator, di
 
     return model, optim_parts, disc, disc_optim_parts
 
-def save_exp(model: LatentModel | Compressor, config: ExpConfig, name: str, discriminator: Discriminator | None = None) -> None:
+def save_exp(model: LatentModel | Compressor, config: ExpConfig, name: str, discriminator: Discriminator | None = None, optim_parts: dict | None = None) -> None:
     if config.rank != 0:
         return
     output(f'Saving the {name} model at step {config.current_step}')
@@ -620,21 +622,30 @@ def save_exp(model: LatentModel | Compressor, config: ExpConfig, name: str, disc
             output(config)
         return
     
-    if config.rank == 0:
-        model.save_backbone(config.backbone_ckpt_path(name))
-        model.save_compressor(config.coder_ckpt_path(name))
-        if discriminator is not None:
-            output(f'Saving the {name} discriminator at step {config.current_step}')
-            if isinstance(discriminator, DDP):
-                discriminator.module.save(config.discriminator_ckpt_path(name))
-            else:
-                discriminator.save(config.discriminator_ckpt_path(name))
-        try:
-            config.save(name)
-        except:
-            output(f'failed to save the config')
-            output(config)
+    model.save_backbone(config.backbone_ckpt_path(name))
+    model.save_compressor(config.coder_ckpt_path(name))
+    if discriminator is not None:
+        output(f'Saving the {name} discriminator at step {config.current_step}')
+        if isinstance(discriminator, DDP):
+            discriminator.module.save(config.discriminator_ckpt_path(name))
+        else:
+            discriminator.save(config.discriminator_ckpt_path(name))
+    try:
+        config.save(name)
+    except:
+        output(f'failed to save the config')
+        output(config)
 
+    # optim_parts = {
+    #     'optim': optim,
+    #     'scheduler': scheduler,
+    #     'scaler': scaler
+    # }
+    if optim_parts:
+        optim: Optimizer = optim_parts['optim']
+        scheduler: LRScheduler = optim_parts['scheduler']
+        torch.save(optim.state_dict(), config.optim_path(name))
+        torch.save(scheduler.state_dict(), config.scheduler_path(name))
 
 class InfLoader:
     
@@ -670,4 +681,22 @@ def is_one_more_batch(dataloader: DataLoader, config: ExpConfig) -> bool:
         print(f'RANK {config.rank} has {my_num} batches, wait others with {max_n} batches.')
         return True
     return False
+
+def get_CosineAnnealingWithLrWarmUpLR(optimizer: Optimizer, warmup_steps:int, min_lr: float, total_steps: int, verbose: bool = ...) -> SequentialLR:
+    lr1 = LinearLR(optimizer, start_factor=1e-5, end_factor=1.0, total_iters=warmup_steps, verbose=verbose)
+    lr2 = CosineAnnealingLR(optimizer, T_max=total_steps-warmup_steps , eta_min=min_lr, verbose=verbose)
+    return SequentialLR(optimizer, [lr1, lr2], milestones=[warmup_steps], verbose=verbose)
+
+def get_LrScheduler(optimizer: Optimizer, conf: ExpConfig) -> LRScheduler:
+    match conf.scheduler:
+        case 'CosineAnnealingLR':
+            if conf.warm_up_step > 0:
+                scheduler = get_CosineAnnealingWithLrWarmUpLR(optimizer, warmup_steps=conf.warm_up_step, min_lr=0.1*conf.lr, total_steps=conf.total_steps, verbose=True)
+            else:
+                scheduler = CosineAnnealingLR(optimizer, T_max=conf.total_steps, eta_min=0.1*conf.lr, verbose=True)
+        case '':
+            scheduler = None
+        case _:
+            raise NotImplementedError(f'{conf.scheduler} not implemented yet!')
     
+    return scheduler

@@ -1,7 +1,9 @@
 import os
 from os import PathLike
 from enum import Enum
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
+import json
+from hashlib import md5
 
 import torch
 from diffusers.models import AutoencoderKL
@@ -39,3 +41,24 @@ class RenderConfig:
     
     # def __str__(self) -> str:
     #     return str(self.to_dict)
+    
+@dataclass
+class PretrainDatasetConfig:
+    dataset_paths: list[str] = field(default_factory=list)
+    max_len: int = 800
+    seed: int = 42
+    shuffle: bool = False
+    num_shards: int = 256
+        
+    def save(self, folder: str | os.PathLike) -> str:
+        os.makedirs(folder, exist_ok=True)
+
+        js = json.dumps(asdict(self), indent=2)
+        path = os.path.join(folder, 'dataset_config.json')
+        with open(path, 'w') as fout:
+            fout.write(js)
+        
+        return js
+    
+    def signature(self) -> str:
+        return md5(json.dumps(asdict(self), indent=2).encode('utf8')).hexdigest()
