@@ -1,12 +1,12 @@
 import os
 from functools import partial
 from collections import defaultdict
+from dataclasses import asdict
 import random
 from typing import Iterator, Any
 
 import torch
 from torch.utils.data import DataLoader, Dataset
-from torch.utils.data import IterableDataset as ItDataset
 from torch import distributed
 from ..text_graph import TGraph
 from ..config import ModelType, RenderConfig, PretrainDatasetConfig
@@ -17,34 +17,21 @@ from .preprocess import preprocess_pretrain_data
 from tqdm import tqdm
 import numpy as np
 
-from datasets import load_dataset, interleave_datasets, load_from_disk, IterableDataset
+from datasets import load_dataset, interleave_datasets, load_from_disk
 from datasets.distributed import split_dataset_by_node
 
 
-class InfDataset(ItDataset, Iterator):
-    def __init__(self, dataset: IterableDataset, n_skip: int = 0) -> None:
+class SkipDataset(Dataset):
+    def __init__(self, dataset: Dataset, n_skip: int = 0) -> None:
         super().__init__()
         self.dataset = dataset
-        if n_skip > 0:
-            self.skipped = dataset.skip(n_skip)
         self.n_skip = n_skip
-        self.iter = None
     
-    def __iter__(self) -> Iterator:
-        if self.n_skip > 0:
-            self.iter = iter(self.skipped)
-            self.n_skip = 0
-        else:
-            self.iter = iter(self.dataset)
-        return self
-
-    def __next__(self) -> Any:
-        try:
-            nxt = next(self.iter)
-        except StopIteration:
-            iter(self)
-            nxt = next(self.iter)
-        return nxt
+    def __len__(self) -> int:
+        return max(0, len(self.dataset) - self.n_skip)
+    
+    def __getitem__(self, index) -> Any:
+        return self.dataset[index + self.n_skip]
 
 def dataloader_init_fn(worker_id, seed: int, render_config: RenderConfig) -> None:
     seed_everyting(seed)
@@ -157,8 +144,9 @@ def get_pretrain_dataloader(
 
     num_samples = len(dataset)
 
-    dataset = dataset.to_iterable_dataset(num_shards=256)
-    dataset = InfDataset(dataset, n_skip=n_skip % num_samples)
+    if n_skip > 0:
+        print(f'Skip first {n_skip} samples to continue training')
+        dataset = SkipDataset(dataset, (n_skip // world_size) % num_samples)
     loader = DataLoader(
         dataset=dataset,
         batch_size=batch_size,
@@ -168,7 +156,7 @@ def get_pretrain_dataloader(
         worker_init_fn=partial(dataloader_init_fn, seed=data_conf.seed, render_config=render_conf),
         drop_last=True
     )
-    TGraph.init_render(**render_conf)
+    TGraph.init_render(**asdict(render_conf))
     return loader
 
 def get_pixel_pretrain_dataloader(

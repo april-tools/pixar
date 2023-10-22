@@ -83,7 +83,7 @@ class ExpConfig:
     mask_ratio: float = 0.25
     mask_type: str = 'span'
     total_steps: int = 4000 # number of parameter update steps
-    this_train_steps: int = 1000    # number of steps of this train
+    stop_step: int = 4000   # number of steps of current train
     max_token: int = 512    # 1024 for gpt2, 2048 for llama 7b
     eval_freq: int = 100
     begin_eval: int = 0
@@ -173,7 +173,7 @@ class ExpConfig:
             
     @property
     def pretrain_dataset_config(self) -> PretrainDatasetConfig:
-        self.dataset_paths.sort()
+        self.dataset_paths.sort(reverse=True)
         return PretrainDatasetConfig(
             dataset_paths=self.dataset_paths,
             max_len=self.max_len,
