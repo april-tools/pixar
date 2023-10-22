@@ -118,23 +118,27 @@ def get_pretrain_dataloader(
     mask_ratio: float = 0.25,
     mask_type: str = 'rand'
 ) -> DataLoader:
-    # Check whether this dataset is cached
-    cache_folder = os.path.join(cache_path, data_conf.signature())
-    if os.path.isdir(cache_folder):
-        print(f'Find cached path at {cache_folder}')
-        dataset = load_from_disk(os.path.join(cache_folder, 'data'))
-    else:
-        print(f'No cached data found, begin to preprocess on rank {0}')
-        if rank == 0:
-            dataset = preprocess_pretrain_data(data_conf)
-            dataset.save_to_disk(os.path.join(cache_folder, 'data'), num_shards=data_conf.num_shards)
-            data_conf.save(cache_folder)
-            print(f'Preprocessed dataset saved to {cache_folder}')
+    if len(data_conf.dataset_paths) > 1:
+        # Check whether this dataset is cached
+        cache_folder = os.path.join(cache_path, data_conf.signature())
+        if os.path.isdir(cache_folder):
+            print(f'Find cached path at {cache_folder}')
+            dataset = load_from_disk(os.path.join(cache_folder, 'data'))
+        else:
+            print(f'No cached data found, begin to preprocess on rank {0}')
+            if rank == 0:
+                dataset = preprocess_pretrain_data(data_conf)
+                dataset.save_to_disk(os.path.join(cache_folder, 'data'), num_shards=data_conf.num_shards)
+                data_conf.save(cache_folder)
+                print(f'Preprocessed dataset saved to {cache_folder}')
 
-        if world_size > 1:
-            distributed.barrier()
-        dataset = load_from_disk(os.path.join(cache_folder, 'data'))
-        print(f'Dataset loaded on rank {rank}')
+            if world_size > 1:
+                distributed.barrier()
+            dataset = load_from_disk(os.path.join(cache_folder, 'data'))
+            print(f'Dataset loaded on rank {rank}')
+    else:
+        dataset = load_from_disk(os.path.join(data_conf.dataset_paths[0], 'data'))
+        print(f'Dataset {data_conf.dataset_paths[0]} loaded on rank {rank}')
         
     dataset = split_dataset_by_node(
         dataset=dataset, 

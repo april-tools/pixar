@@ -3,7 +3,7 @@ torchrun train.py \
     --exp_type 'debug' \
     --backbone_path storage/checkpoints/debug/lpixel_pretrain/LatentGPT2/20231022-024230/20/backbone \
     --compressor_name CNNAutoencoder \
-    --dataset_paths storage/bookcorpusopen storage/enwiki/ \
+    --dataset_paths storage/cache/41c2ec0be6661800d3c5fe8d8dff1d23 \
     --max_len 3000 \
     --dataset_num_shards 256 \
     --shuffle_dataset true \
@@ -13,7 +13,7 @@ torchrun train.py \
     --beta2 0.95 \
     --decay 0.1 \
     --total_steps 3000000 \
-    --stop_step 40 \
+    --stop_step 30 \
     --warm_up_step 2000 \
     --save_freq 20 \
     --eval_freq 20 \
