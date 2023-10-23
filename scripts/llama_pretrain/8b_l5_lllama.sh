@@ -32,10 +32,11 @@ srun torchrun \
     --rdzv-id=123 \
     --rdzv-endpoint=$head_node_ip \
     train.py \
-    --model 'LatentGPT2' \
-    --exp_type 'dgpt2_pretrain' \
-    --backbone_path /work/sc118/sc118/shared/gpt2 \
+    --model 'LatentLlama' \
+    --exp_type 'lllama_pretrain' \
+    --backbone_path /work/sc118/sc118/shared/llama \
     --compressor_name CNNAutoencoder \
+    --compressor_path /work/sc118/sc118/shared/compressors/CNNAutoencoders/r4h8c1hc16g8b \
     --dataset_paths /work/sc118/sc118/shared/datasets/bookAndwiki \
     --checkpoint_path /work/sc118/sc118/shared/checkpoints \
     --max_len 3000 \
@@ -47,7 +48,7 @@ srun torchrun \
     --beta2 0.95 \
     --decay 0.1 \
     --total_steps 1000000 \
-    --stop_step 10000 \
+    --stop_step 100000 \
     --warm_up_step 2000 \
     --save_freq 10000 \
     --eval_freq 500 \

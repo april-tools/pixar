@@ -311,14 +311,15 @@ class LatentLlama(LatentModel):
         return
     
     def delete_unused_layers(self) -> None:
-        if self.compressor is None:
-            print('Delete the token embeddings.')
-            del self.backbone.embed_tokens
-            self.backbone.embed_tokens = None
-            return
-        print('delete the decoder')
-        del self.compressor.decoder
-        self.compressor.decoder = None
+        print('Delete the token embeddings.')
+        del self.backbone.embed_tokens
+        self.backbone.embed_tokens = None
+
+        if self.compressor is not None:
+            print('delete the decoder')
+            del self.compressor.decoder
+            self.compressor.decoder = None
+        return
 
     def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
         prompt.unsquarelize()
