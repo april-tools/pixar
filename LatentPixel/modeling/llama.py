@@ -284,16 +284,23 @@ class LatentLlama(LatentModel):
         return result
 
     def forward_loss(self, pred: torch.Tensor, target: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        patch_width = self.latent_patch_size * self.patch_len
-        pred = pred[..., :-patch_width]
-        target = target[..., patch_width:]
-        mask = mask2img(attention_mask, self.latent_patch_size, self.patch_len)
+        patch_width = self.latent_patch_size * self.patch_len   # the width of a patch
+        pred = pred[..., :-patch_width] # ignore the last patch of predicion, because we don't have the answer for it
+        target = target[..., patch_width:]  # ignore the first patch of input, because we don't have it's previous patch
+        mask = mask2img(attention_mask, self.latent_patch_size, self.patch_len) # make [11100] mask into a mask image
         mask.unsqueeze_(1)
         mask = mask[..., patch_width:]
+        bs, c, h, w = pred.shape
+        mask = mask.reshape(-1).contiguous()
 
         if self.binary and self.compressor is None:
-            loss = nn.BCEWithLogitsLoss(reduction='none').forward(pred.reshape(-1).contiguous(), target.reshape(-1).contiguous())
-            loss = (loss * mask.reshape(-1).contiguous()).sum() / mask.sum()
+            loss = nn.BCEWithLogitsLoss(reduction='none').forward(pred.reshape(-1).contiguous(), target.reshape(-1).contiguous()) * mask
+            loss = loss.reshape(bs, c * h * w)
+            mask = mask.reshape(bs, c * h * w)
+            print(loss.shape)
+            loss = loss.sum(dim=1) / mask.sum(dim=1)
+            print(loss.shape)
+            loss = loss.mean()  # average among the batch
         else:
             loss = ((pred - target)**2 * mask).sum() / (mask.sum() * self.num_latent_channel)   # MSE loss
 

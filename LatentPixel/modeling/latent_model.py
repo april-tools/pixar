@@ -199,9 +199,21 @@ class LatentModel(nn.Module):
                 return
             for param in self.compressor.parameters():
                 param.requires_grad = False
+
+    def _generate(self, prompt: TGraph) -> TGraph:
+        gen = TGraph.from_text(prompt.text)
+        gen._value = prompt.value.float()
+        output = self.forward(prompt)
+        for idx, num_text in enumerate(prompt.num_text_patches):
+            bidx = (num_text - 2) * prompt.patch_len * prompt.patch_size
+            eidx = bidx + prompt.patch_len * prompt.patch_size
+            patch = output.value[idx, :, :, bidx:eidx]
+            gen._value[idx, :, :, eidx:eidx + prompt.patch_len * prompt.patch_size] = patch
+            gen.num_text_patches[idx] += 1  #todo
+        return gen
                 
     def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
-        raise NotImplementedError('All child module should define this function within it')
+        ...
 
     @property
     def has_decoder(self) -> bool:
