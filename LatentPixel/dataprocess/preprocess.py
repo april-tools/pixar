@@ -2,8 +2,18 @@ from functools import partial
 from datasets import interleave_datasets, Dataset, load_from_disk
 from ..config import PretrainDatasetConfig
 from nltk import sent_tokenize
+import os
+
+CPU_AFF_SETTED = False
+def set_cpu_aff():
+    global CPU_AFF_SETTED
+    if CPU_AFF_SETTED:
+        return
+    os.system("taskset -p 0xffffffffff %d" % os.getpid())
+    CPU_AFF_SETTED = True
 
 def collate_text(batch: dict, max_len: int | None = None) -> list[str]:
+    set_cpu_aff()
     texts: list[str] = batch['text']
     docs = []
     for txt in texts:
@@ -31,6 +41,8 @@ def collate_text(batch: dict, max_len: int | None = None) -> list[str]:
                 samples.append(' '.join(sents))
                 length = 0
                 sents = []
+        if len(sents) > 0:
+            samples.append(' '.join(sents))
 
     return {'text': samples}
 

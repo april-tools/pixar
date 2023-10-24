@@ -76,6 +76,7 @@ class TGraph:
     _half: bool = False
     _predicts: torch.Tensor | None = None
     _labels: torch.Tensor | None = None
+    _contoru: torch.Tensor = ...
     loss: torch.Tensor | None = None
     device: Any = None
 
@@ -271,7 +272,7 @@ class TGraph:
     @property
     def num_text_patches(self) -> int | list[int]:
         if self._num_text_patches is not None:
-            return self._num_text_patches
+            return [num for num in self._num_text_patches]
         
         if self._attention_mask is not None:
             self._num_text_patches = (self._attention_mask.sum(-1) - 1).tolist()
@@ -476,16 +477,36 @@ class TGraph:
             return self._val2pil_binary(value.float())
         return self._val2pil(value.clamp(0, 1))
 
-    def to_PIL(self, square: bool=True) -> Image | list[Image]:
+    def to_PIL(self, square: bool=True, contour: float = 0) -> Image | list[Image]:
+        value = self.value
+        if contour > 0:
+            if self._contoru is ...:
+                self._contoru = self._gen_contour()
+            value = value.repeat([1, 3, 1, 1])
+            value = value.float() + self._contoru * contour
+            value[:, 1, :, :] += self._contoru * contour
+
         if square:
-            value = self._squarelize(self.value)
-        else:
-            value = self.value
+            value = self._squarelize(value)
         
         if value.dim() == 3:
             return self._to_PIL(value)
         
         return [self._to_PIL(img) for img in value]
+    
+    def _gen_contour(self) -> torch.Tensor:
+        contour = torch.zeros(self.patch_size, get_num_patches() * self.patch_size, dtype=torch.float)
+        width = self.patch_len * self.patch_size
+        print(width)
+        h = self._value.shape[-2]
+        w = self._value.shape[-1]
+        for i in range(h):
+            for j in range(w):
+                if i % h == 0:
+                    contour[i, j] = 1
+                elif j % width == 0:
+                    contour[i, j] = 1
+        return contour
     
     @classmethod
     def from_numpy(cls, img: np.ndarray) -> TGraph:
