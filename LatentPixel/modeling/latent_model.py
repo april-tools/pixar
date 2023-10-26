@@ -7,6 +7,7 @@ from torch import nn
 from torchvision.transforms import PILToTensor, Compose, ToPILImage, Normalize
 
 from diffusers import AutoencoderKL
+from tqdm import tqdm
 
 from ..text_graph import TGraph
 from ..config import LATENT_DEFAULT_MEAN, LATENT_DEFAULT_STD
@@ -201,19 +202,25 @@ class LatentModel(nn.Module):
                 param.requires_grad = False
 
     def _generate(self, prompt: TGraph) -> TGraph:
-        gen = TGraph.from_text(prompt.text)
-        gen._value = prompt.value.float()
+        gen = TGraph.from_tgraph(prompt)
+        gen._value = prompt.value
         output = self.forward(prompt)
         for idx, num_text in enumerate(prompt.num_text_patches):
-            bidx = (num_text - 2) * prompt.patch_len * prompt.patch_size
+            bidx = (num_text - 2) * prompt.patch_len * prompt.patch_size            
             eidx = bidx + prompt.patch_len * prompt.patch_size
-            patch = output.value[idx, :, :, bidx:eidx]
+            patch = output._value[idx, :, :, bidx:eidx]
+            print(patch)
+            patch = (patch > 0.5).long()
             gen._value[idx, :, :, eidx:eidx + prompt.patch_len * prompt.patch_size] = patch
-            gen.num_text_patches[idx] += 1  #todo
+            gen._num_text_patches[idx] += 1
+            gen._attention_mask = None
         return gen
                 
     def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
-        ...
+        for _ in tqdm(range(num_new_patches)):
+            gen = self._generate(prompt)
+            prompt = gen
+        return gen
 
     @property
     def has_decoder(self) -> bool:

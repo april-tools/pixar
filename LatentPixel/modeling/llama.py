@@ -328,19 +328,19 @@ class LatentLlama(LatentModel):
             self.compressor.decoder = None
         return
 
-    def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
-        prompt.unsquarelize()
-        if self.coder is not None:
-            encoded = self.encode(prompt)
-        else:
-            encoded = prompt
+    # def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
+    #     prompt.unsquarelize()
+    #     if self.coder is not None:
+    #         encoded = self.encode(prompt)
+    #     else:
+    #         encoded = prompt
             
-        for idx in range(num_new_patches):
-            print(f'generate the {idx} th patch')
-            generated = self.latent_forward(encoded)
-            encoded._value[..., gen_idx * self.latent_patch_size: (gen_idx + 1) * self.latent_patch_size] = generated._value[..., (gen_idx - 1) * self.latent_patch_size: gen_idx * self.latent_patch_size] 
-            gen_idx += 1
-            if gen_idx > 528:
-                break
+    #     for idx in range(num_new_patches):
+    #         print(f'generate the {idx} th patch')
+    #         generated = self.latent_forward(encoded)
+    #         encoded._value[..., gen_idx * self.latent_patch_size: (gen_idx + 1) * self.latent_patch_size] = generated._value[..., (gen_idx - 1) * self.latent_patch_size: gen_idx * self.latent_patch_size] 
+    #         gen_idx += 1
+    #         if gen_idx > 528:
+    #             break
         
-        return encoded
+    #     return encoded

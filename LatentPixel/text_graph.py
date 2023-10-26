@@ -722,3 +722,24 @@ class TGraph:
     def float(self) -> TGraph:
         self._half = False
         return self
+
+    @torch.no_grad()
+    def shift_text(self) -> TGraph:
+        width = self.patch_size * self.patch_len
+        for sidx, num_text in enumerate(self.num_text_patches):
+            widx = (num_text - 1) * width - 1
+            tidx = widx
+            m = 1.0
+            shift = 0
+            while widx > 0 and m >= 1.0:
+                print(widx)
+                m = self._value.float()[sidx, :, :, widx].mean().item()
+                if m == 1.0:
+                    shift += 1
+                widx -= 1
+            shift = shift // 3 * 3
+            vals = self._value[sidx, :, :, 0:tidx-shift+1].clone()
+            print(vals.shape, shift, widx, width)
+            self._value[sidx, :, :, shift:tidx+1] = vals
+            self._value[sidx, :, :, 0:shift] = 1
+        return self
