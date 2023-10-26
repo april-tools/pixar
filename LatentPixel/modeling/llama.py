@@ -297,9 +297,7 @@ class LatentLlama(LatentModel):
             loss = nn.BCEWithLogitsLoss(reduction='none').forward(pred.reshape(-1).contiguous(), target.reshape(-1).contiguous()) * mask
             loss = loss.reshape(bs, c * h * w)
             mask = mask.reshape(bs, c * h * w)
-            print(loss.shape)
             loss = loss.sum(dim=1) / mask.sum(dim=1)
-            print(loss.shape)
             loss = loss.mean()  # average among the batch
         else:
             loss = ((pred - target)**2 * mask).sum() / (mask.sum() * self.num_latent_channel)   # MSE loss
