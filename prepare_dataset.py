@@ -1,21 +1,24 @@
-from os.path import join
-from datasets import load_dataset, load_from_disk
-from LatentPixel import params2dict
+from LatentPixel.dataprocess.preprocess import preprocess_pretrain_data
+from LatentPixel.config import PretrainDatasetConfig
+from datasets import load_dataset
 
-params = {
-    'hf_paths': ["lucadiliello/bookcorpusopen"],
-    'num_shards': 256,
-    'ds_names': ['fbookcorpusopen'],
-    'split_names': ['train'],
-    'local_path': '/work/sc118/sc118/shared'
-}
+books = load_dataset('lucadiliello/bookcorpusopen', split='train')
+books.save_to_disk('storage/bookcorpusopen', num_shards=256)    # shard the dataset for parallism
 
-def process(hf_path: str, path: str, split_name: str, num_shards: int) -> None:
-    ds = load_dataset(hf_path)
-    ds = ds[split_name]
-    ds.save_to_disk(path, num_shards=num_shards)
+wiki = load_dataset('wikipedia', '20220301.en', split='train')
+wiki.save_to_disk('storage/enwiki/', num_shards=256)
 
-if __name__ == '__main__':
-    params = params2dict(params)
-    for hf_path, ds_name, split_name in zip(params['hf_paths'], params['ds_names'], params['split_names']):
-        process(hf_path, join(params['local_path'], ds_name), split_name, params['num_shards'])
+del books
+del wiki
+
+dataset = preprocess_pretrain_data(
+    PretrainDatasetConfig(
+        dataset_paths=['storage/bookcorpusopen/', 'storage/enwiki/'],
+        max_len=3500,
+        seed=42,
+        shuffle=True,
+        num_shards=256
+    )
+)
+
+dataset.save_to_disk('storage/booksAndWiki/data', num_shards=256)

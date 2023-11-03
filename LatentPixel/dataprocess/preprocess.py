@@ -76,7 +76,7 @@ def preprocess_pretrain_data(conf: PretrainDatasetConfig) -> Dataset:
         drop_last_batch=False,
         batched=True,
         remove_columns=[name for name in dataset.column_names if name != 'text'],
-        num_proc=8
+        num_proc=16
     )
     
     if conf.shuffle:
