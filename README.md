@@ -15,7 +15,7 @@ The login node limits the memory each user can use, which is insufficient to ins
 
 ```
 ssh xxx@eddie.ecdf.ed.ac.uk
-qlogin -pe interactivemem 4 -l h_vmem=4g
+qlogin -pe interactivemem 16 -l h_vmem=8g
 ```
 
 2. Install conda on Scratch directory
@@ -68,4 +68,14 @@ ln -s /exports/eddie/scratch/{UUN}/pixelplus storage
 
 ```
 git clone https://huggingface.co/Team-PIXEL/pixel-base storage/pixel-base
+```
+
+2. Modify the `HF_HOME` variable to somewhere at `/exports/eddie/scratch/{UUN}/`
+
+3. Run the data preparation scripts
+
+The scripts only collate text files, does not render them into image.
+
+```
+python prepare_dataset.py
 ```

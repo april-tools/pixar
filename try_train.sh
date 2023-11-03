@@ -1,11 +1,16 @@
-torchrun train.py \
-    --model 'LatentGPT2' \
+export NUM_GPU_PER_NODE=1
+export NUM_NODES=1
+
+torchrun    \
+    --rdzv-backend=c10d \
+    --rdzv-endpoint=localhost:0 \
+    --nnodes=$NUM_NODES  \
+    --nproc-per-node=$NUM_GPU_PER_NODE  \
+    train.py \
+    --model 'LatentLlama' \
     --exp_type 'debug' \
-    --backbone_path storage/checkpoints/debug/lpixel_pretrain/LatentGPT2/20231022-024230/20/backbone \
-    --compressor_name CNNAutoencoder \
-    --dataset_paths storage/cache/41c2ec0be6661800d3c5fe8d8dff1d23 \
-    --max_len 3000 \
-    --dataset_num_shards 256 \
+    --backbone_path storage/llama \
+    --dataset_path storage/cache/old \
     --shuffle_dataset true \
     --optim 'AdamW' \
     --lr 6e-4 \
@@ -18,18 +23,17 @@ torchrun train.py \
     --save_freq 20 \
     --eval_freq 20 \
     --seed 42 \
-    --batch_size 384 \
-    --sub_size 24 \
-    --font_file PixeloidSans-mLxMm.ttf \
+    --batch_size 256 \
+    --sub_size 8 \
     --dpi 80 \
-    --pixels_per_patch 8 \
-    --patch_len 5 \
+    --pixels_per_patch 16 \
+    --patch_len 2 \
     --num_channel 1 \
     --binary true \
     --rgb false \
-    --max_seq_length 1800 \
+    --max_seq_length 720 \
     --mix_precision fp16 \
     --half_coder false \
-    --mp_workers 8 \
-    --num_gpu_per_node 1 \
-    --num_node 1  \
+    --mp_workers 16 \
+    --num_gpu_per_node $NUM_GPU_PER_NODE \
+    --num_node $NUM_NODES  \
