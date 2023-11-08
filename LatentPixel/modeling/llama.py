@@ -233,6 +233,9 @@ class LatentLlama(LatentModel):
         
         Llama: LlamaForPatchCausalInference = LlamaForPatchCausalInference.from_pretrained(path, config=Llama_config, ignore_mismatched_sizes=True)
         self.backbone = Llama
+
+        del self.backbone.embed_tokens
+        self.backbone.embed_tokens = None
         
         return Llama
     
@@ -316,10 +319,6 @@ class LatentLlama(LatentModel):
         return
     
     def delete_unused_layers(self) -> None:
-        print('Delete the token embeddings.')
-        del self.backbone.embed_tokens
-        self.backbone.embed_tokens = None
-
         if self.compressor is not None:
             print('delete the decoder')
             del self.compressor.decoder

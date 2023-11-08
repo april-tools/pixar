@@ -30,6 +30,8 @@ from .dataprocess import (
 from .metrics import EditDistance
 from .training import GLUE_META
 
+BIN_FONT = 'PixeloidSans-mLxMm.ttf'
+
 __all__ = [
     'ModelType'
     'TGraph'
@@ -52,4 +54,5 @@ __all__ = [
     'CNNAutoencoder'
     'LatentLlama'
     'SDAutoencoder'
+    'BIN_FONT'
 ]

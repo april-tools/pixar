@@ -723,23 +723,41 @@ class TGraph:
         self._half = False
         return self
 
+    @property
+    def patch_width(self) -> int:
+        return self.patch_size * self.patch_len
+
     @torch.no_grad()
-    def shift_text(self) -> TGraph:
-        width = self.patch_size * self.patch_len
-        for sidx, num_text in enumerate(self.num_text_patches):
-            widx = (num_text - 1) * width - 1
-            tidx = widx
-            m = 1.0
-            shift = 0
-            while widx > 0 and m >= 1.0:
-                print(widx)
-                m = self._value.float()[sidx, :, :, widx].mean().item()
-                if m == 1.0:
-                    shift += 1
+    def _shift_text(self, sidx: int, shift: int) -> TGraph:
+        """
+        Shift text patches forward (positive) or backward (negative) with specified number of pixels
+        """
+        widx = (self.num_text_patches[sidx] - 1) * self.patch_width - 1    # index of the last pixel of text patches
+        text_pixels = self._value[sidx, :, :, max(0, -shift):min(widx+1, widx+1-shift)].clone()
+        self._value[sidx, :, :, 0:widx+1] = 1
+        self._value[sidx, :, :, max(shift, 0):min(widx+1, widx+1+shift)] = text_pixels
+        return self
+    
+    @torch.no_grad()
+    def count_white_space(self, sidx: int) -> int:
+        """
+        Count how many white pixels at the end of the text before the black square
+        """
+        num = 0
+        widx = (self.num_text_patches[sidx] - 1) * self.patch_width - 1    # index of the last pixel of text patches
+        while widx >= 0:
+            if self._value[sidx, :, :, widx].float().mean().item() >= 0.999999:
+                num += 1
                 widx -= 1
-            shift = shift // 3 * 3
-            vals = self._value[sidx, :, :, 0:tidx-shift+1].clone()
-            print(vals.shape, shift, widx, width)
-            self._value[sidx, :, :, shift:tidx+1] = vals
-            self._value[sidx, :, :, 0:shift] = 1
+            else:
+                break
+        return num
+
+    @torch.no_grad()
+    def _spacing_text(self, space_len: int) -> TGraph:
+        for idx in range(self._value.shape[0]):
+            if self.num_text_patches[idx] <= 1:
+                continue
+            space = self.count_white_space(idx)
+            self._shift_text(idx, space-space_len)
         return self

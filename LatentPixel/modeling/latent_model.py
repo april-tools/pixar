@@ -209,7 +209,6 @@ class LatentModel(nn.Module):
             bidx = (num_text - 2) * prompt.patch_len * prompt.patch_size            
             eidx = bidx + prompt.patch_len * prompt.patch_size
             patch = output._value[idx, :, :, bidx:eidx]
-            print(patch)
             patch = (patch > 0.5).long()
             gen._value[idx, :, :, eidx:eidx + prompt.patch_len * prompt.patch_size] = patch
             gen._num_text_patches[idx] += 1
@@ -217,7 +216,7 @@ class LatentModel(nn.Module):
         return gen
                 
     def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
-        for _ in tqdm(range(num_new_patches)):
+        for _ in range(num_new_patches):
             gen = self._generate(prompt)
             prompt = gen
         return gen
