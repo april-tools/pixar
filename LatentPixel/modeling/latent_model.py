@@ -93,19 +93,22 @@ class LatentModel(nn.Module):
     def forward(self, img: TGraph) -> TGraph:
         if self.compressor is None:
             recon = self.latent_forward(img)
-            if self.binary:
+            recon._labels = img._labels
+            if self.binary and self.num_labels is None:
                 recon._value.sigmoid_()
                 recon._binary = True
             return recon
         
         latent = self.encode(img)
+        latent._labels = img._labels
         recon = self.latent_forward(latent)
         loss = recon.loss
 
         if self.has_decoder:
             recon = self.decode(recon)
+            recon._labels = img._labels
 
-            if self.binary:
+            if self.binary and self.num_labels is None:
                 recon._value.sigmoid_()
                 recon._binary = True
 

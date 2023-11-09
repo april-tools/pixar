@@ -100,8 +100,8 @@ def collate_glue(batch: dict) -> TGraph:
         raise ValueError(f'GLUE dataset should be 3 or 4 fields, but got {len(batch)} fields')
     
     tgraph = TGraph.from_text(text)
-    tgraph.labels = torch.tensor(label)
-    assert isinstance(tgraph.labels, torch.LongTensor) or isinstance(tgraph.labels, torch.DoubleTensor) or isinstance(tgraph.labels, torch.FloatTensor)
+    tgraph._labels = torch.tensor(label)
+    assert isinstance(tgraph._labels, torch.LongTensor) or isinstance(tgraph._labels, torch.DoubleTensor) or isinstance(tgraph._labels, torch.FloatTensor)
     tgraph.attention_mask   # init the attention mask
     
     return tgraph

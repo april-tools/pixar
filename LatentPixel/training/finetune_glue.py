@@ -153,7 +153,7 @@ def train(config: ExpConfig):
         running_loss: float = 0.0
         
         model.backbone.train()
-        model.coder.eval() if model.coder is not None else ...
+        model.compressor.eval() if model.compressor is not None else ...
         
         with ExitStack() as stack:
             train_gacc_stack(stack, config, model.backbone)
@@ -188,7 +188,7 @@ def train(config: ExpConfig):
         
         if config.current_step % config.eval_freq == 0 and config.current_step > config.begin_eval:
             evaluate(model, dev_loaders, config, metrics)
-            save_exp(model, config, str(config.current_step))
+            save_exp(model, config, str(config.current_step), optim_parts=optim_parts)
             
         dist_sync(config)
         

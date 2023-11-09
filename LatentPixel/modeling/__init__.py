@@ -1,6 +1,6 @@
 from .pixels import LPixelForMLM, LPixelForClassification
 from .lgpt2 import LatentGPT2
-from .llama import LatentLlama
+from .llama import LatentLlama, LatentLlamaForSequenceClassification
 from .latent_model import LatentModel
 from .discriminator import Discriminator, DiscriminatorConfig
 from .compressors import CNNAutoencoderConfig, CNNAutoencoder, Compressor, SDAutoencoder
@@ -18,5 +18,6 @@ __all__ = [
     'Compressor'
     'LatentLlama'
     'SDAutoencoder'
+    'LatentLlamaForSequenceClassification'
 ]
 

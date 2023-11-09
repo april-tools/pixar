@@ -102,8 +102,7 @@ class TGraph:
         new._text_mask = graph._text_mask
         new._patch_mask = graph.patch_mask
         new._num_gen_patches = graph.num_gen_patches
-        new._predicts = graph.predcits
-        new._labels = graph.labels
+        new._labels = graph._labels
         
         return new
     
@@ -190,11 +189,13 @@ class TGraph:
         label_type = self.labels.dtype
         if label_type == torch.float or label_type == torch.float64:
             logger.warning_once('Detect float labels, do not call argmax while predict')
-            return self.value
+            return self._value
         if self._predicts is None:
             logger.warning_once('Detect integer labels, call argmax to predict labels')
-            self._predicts = self.value.argmax(-1)
-        return self.process(self._predicts)
+            self._predicts = self._value.argmax(-1)
+        if self.device is not None:
+            return self._predicts.to(self.device)
+        return self._predicts
     
     @property
     def value(self) -> torch.Tensor:
@@ -202,7 +203,10 @@ class TGraph:
     
     @property
     def labels(self) -> torch.Tensor:
-        return self.process(self._labels)
+        if self.device is not None:
+            return self._labels.to(self.device)
+        else:
+            return self._labels
     
     @labels.setter
     def labels(self, labels: torch.Tensor) -> None:

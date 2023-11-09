@@ -7,7 +7,8 @@ from .modeling import (
     CNNAutoencoderConfig,
     CNNAutoencoder,
     LatentLlama,
-    SDAutoencoder
+    SDAutoencoder,
+    LatentLlamaForSequenceClassification
 )
 from .utils import (
     init_render,
@@ -55,4 +56,5 @@ __all__ = [
     'LatentLlama'
     'SDAutoencoder'
     'BIN_FONT'
+    'LatentLlamaForSequenceClassification'
 ]

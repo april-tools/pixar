@@ -45,7 +45,8 @@ from ..modeling import (
     DiscriminatorConfig,
     CNNAutoencoder,
     Compressor,
-    LatentLlama
+    LatentLlama,
+    LatentLlamaForSequenceClassification
 )
 from ..utils import timeit, init_render
 from ..text_graph import TGraph
@@ -264,6 +265,19 @@ def prepare_model_for_glue(config: ExpConfig) -> tuple[LatentModel, dict]:
                 num_labels=config.num_labels
             )
             model.delete_unused_layers()
+        case 'LatentLlamaForSequenceClassification':
+            output('init LatentLlamaForSequenceClassification model')
+            model = LatentLlamaForSequenceClassification(
+                compressor_path=config.compressor_path,
+                backbone_path=config.backbone_path,
+                compressor_name=config.compressor_name,
+                num_channels=config.num_channel,
+                num_labels=config.num_labels,
+                patch_size=config.pixels_per_patch,
+                patch_len=config.patch_len,
+                binary=config.binary
+            )
+            model.delete_unused_layers()
         case _:
             raise NotImplementedError(f'GLUE evaluation on {config.model} has not been implemented')
         
@@ -278,32 +292,29 @@ def prepare_model_for_glue(config: ExpConfig) -> tuple[LatentModel, dict]:
         output('Enable gradient checkpointing')
         model.backbone.gradient_checkpointing_enable()
         
-    if config.half_coder and model.coder is not None:
+    if config.half_coder and model.compressor is not None:
         output('Half the coder')
-        model.coder.half()
+        model.compressor.half()
         if not config.on_cpu:
-            model.coder.to(config.device_id)
+            model.compressor.to(config.device_id)
+
+    params = model.get_backbone_parameters()
             
     # init optimizer
     match config.optim.lower():
         case 'adamw':
-            if config.stage == 1:
-                output('Load connection parameters to the AdamW optimizer.')
-            else:
-                output('Load backbone parameters to the AdamW optimizer.')
+            output('Init AdamW optimizer')
             optim = AdamW(
-                params=model.get_backbone_parameters(),
+                params=params,
                 lr=config.lr,
                 betas=(config.beta1, config.beta2),
                 weight_decay=config.decay,
+                eps=1e-8
             )
         case 'sgd':
-            if config.stage == 1:
-                output('Load connection parameters to the SGD optimizer.')
-            else:
-                output('Load backbone parameters to the SGD optimizer.')
+            output('Init SGD optimizer')
             optim = SGD(
-                params=model.get_backbone_parameters(),
+                params=params,
                 lr=config.lr,
                 momentum=config.momentum
             )
@@ -313,26 +324,18 @@ def prepare_model_for_glue(config: ExpConfig) -> tuple[LatentModel, dict]:
     model.backbone = wrap_model(model.backbone, config)
     
     # init scheduler
-    if config.scheduler.lower() == 'cosineannealinglr':
-        if config.warm_up_step <= 0:
-            print(f'initialize the CosineAnnealingLR with no warm up')
-            scheduler = CosineAnnealingLR(
-                optimizer=optim,
-                T_max=config.total_steps,
-                eta_min=0.1 * config.lr # from llama paper
-            ) 
-        else:
-            print(f'initialize the CosineAnnealingLR with {config.warm_up_step} warm up steps')
-            scheduler = get_cosine_schedule_with_warmup(
-                optimizer=optim,
-                num_warmup_steps=config.warm_up_step,
-                num_training_steps=config.total_steps,
-                num_cycles=0.45
-            )
-    else:
-        raise KeyError(f'Invalid scheduler type {config.scheduler}')
+    scheduler = get_LrScheduler(optim, config)
+
+    optim_path = config.load_optim_path()
+    if optim_path:
+        optim.load_state_dict(torch.load(optim_path, map_location=f'cuda:{config.device_id}'))
+        print(f'Load the optimizer states from {optim_path}')
+
+    scheduler_path = config.load_scheduler_path()
+    if scheduler_path:
+        scheduler.load_state_dict(torch.load(scheduler_path, map_location=f'cuda:{config.device_id}'))
     
-    # init the scheduler for mixedprecision training
+    # init the scaler for mixedprecision training
     scaler = None
     if config.mix_precision == 'fp16':
         print('init the gradscaler for mixed-precision training')
