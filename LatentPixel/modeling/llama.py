@@ -295,9 +295,9 @@ class LatentLlama(LatentModel):
         mask.unsqueeze_(1)
         mask = mask[..., patch_width:]
         bs, c, h, w = pred.shape
-        mask = mask.reshape(-1).contiguous()
 
         if self.binary and self.compressor is None:
+            mask = mask.reshape(-1).contiguous()
             loss = nn.BCEWithLogitsLoss(reduction='none').forward(pred.reshape(-1).contiguous(), target.reshape(-1).contiguous()) * mask
             loss = loss.reshape(bs, c * h * w)
             mask = mask.reshape(bs, c * h * w)
