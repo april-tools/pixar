@@ -33,6 +33,8 @@ from transformers.optimization import get_cosine_schedule_with_warmup
 
 from pixel import PIXELLayer, PIXELEmbeddings
 
+from adamr import AdamR
+
 import wandb
 
 from .train_config import ExpConfig
@@ -301,25 +303,7 @@ def prepare_model_for_glue(config: ExpConfig) -> tuple[LatentModel, dict]:
     params = model.get_backbone_parameters()
             
     # init optimizer
-    match config.optim.lower():
-        case 'adamw':
-            output('Init AdamW optimizer')
-            optim = AdamW(
-                params=params,
-                lr=config.lr,
-                betas=(config.beta1, config.beta2),
-                weight_decay=config.decay,
-                eps=1e-8
-            )
-        case 'sgd':
-            output('Init SGD optimizer')
-            optim = SGD(
-                params=params,
-                lr=config.lr,
-                momentum=config.momentum
-            )
-        case _:
-            raise KeyError(f'Invalid optim type {config.optim}')
+    optim = get_optimizer(params, config)
         
     model.backbone = wrap_model(model.backbone, config)
     
@@ -427,25 +411,7 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
         params = model.parameters()
 
     # init optimizer
-    match config.optim.lower():
-        case 'adamw':
-            output('Init AdamW optimizer')
-            optim = AdamW(
-                params=params,
-                lr=config.lr,
-                betas=(config.beta1, config.beta2),
-                weight_decay=config.decay,
-                eps=1e-8
-            )
-        case 'sgd':
-            output('Init SGD optimizer')
-            optim = SGD(
-                params=params,
-                lr=config.lr,
-                momentum=config.momentum
-            )
-        case _:
-            raise KeyError(f'Invalid optim type {config.optim}')
+    optim = get_optimizer(params, config)
         
     if not isinstance(model, Compressor):
         model.backbone = wrap_model(model.backbone, config)
@@ -552,36 +518,9 @@ def prepare_gan(config: ExpConfig) -> tuple[LatentModel, dict, Discriminator, di
     else:
         raise KeyError(f'Unsupport pretraining stage {config.stage}')
 
-    # init optimizer
-    match config.optim.lower():
-        case 'adamw':
-            output('Init AdamW optimizer')
-            optim = AdamW(
-                params=params,
-                lr=config.lr,
-                betas=(config.beta1, config.beta2),
-                weight_decay=config.decay,
-            )
-            disc_optim = AdamW(
-                params=disc.parameters(),
-                lr=config.lr,
-                betas=(config.beta1, config.beta2),
-                weight_decay=config.decay,
-            )
-        case 'sgd':
-            output('Init SGD optimizer')
-            optim = SGD(
-                params=params,
-                lr=config.lr,
-                momentum=config.momentum
-            )
-            disc_optim = SGD(
-                params=disc.parameters(),
-                lr=config.lr,
-                momentum=config.momentum
-            )
-        case _:
-            raise KeyError(f'Invalid optim type {config.optim}')
+    # init optimizers
+    optim = get_optimizer(params, config)
+    disc_optim = get_optimizer(disc.parameters(), config)
 
     model.backbone = wrap_model(model.backbone, config)
     disc = wrap_model(disc, config)
@@ -645,11 +584,8 @@ def save_exp(model: LatentModel | Compressor, config: ExpConfig, name: str, disc
             discriminator.module.save(config.discriminator_ckpt_path(name))
         else:
             discriminator.save(config.discriminator_ckpt_path(name))
-    try:
-        config.save(name)
-    except:
-        output(f'failed to save the config')
-        output(config)
+
+    config.save(name)
 
     # optim_parts = {
     #     'optim': optim,
@@ -716,3 +652,38 @@ def get_LrScheduler(optimizer: Optimizer, conf: ExpConfig) -> LRScheduler:
             raise NotImplementedError(f'{conf.scheduler} not implemented yet!')
     
     return scheduler
+
+def get_optimizer(params: torch.ParameterDict, config: ExpConfig) -> Optimizer:
+    '''
+    Initialize the optimizer
+    '''
+    match config.optim.lower():
+        case 'adamw':
+            output('Init AdamW optimizer')
+            optim = AdamW(
+                params=params,
+                lr=config.lr,
+                betas=(config.beta1, config.beta2),
+                weight_decay=config.decay,
+                eps=1e-8
+            )
+        case 'sgd':
+            output('Init SGD optimizer')
+            optim = SGD(
+                params=params,
+                lr=config.lr,
+                momentum=config.momentum
+            )
+        case 'adamr':
+            output('Init AdamR optimizer')
+            optim = AdamR(
+                params=params,
+                lr=config.lr,
+                betas=(config.beta1, config.beta2),
+                weight_recovery=config.decay,
+                eps=1e-8
+            )
+        case _:
+            raise KeyError(f'Invalid optim type {config.optim}')
+        
+    return optim
