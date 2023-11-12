@@ -407,7 +407,7 @@ class ExpConfig:
     
     def continue_training(self) -> ExpConfig | None:
         ckpt_path = Path(self.backbone_path).parent
-        old = self.from_checkpoint(ckpt_path)
+        old = ExpConfig.from_checkpoint(ckpt_path)
         if old:
             self.current_step = old.current_step
             self._num_trained_samples = old._num_trained_samples
