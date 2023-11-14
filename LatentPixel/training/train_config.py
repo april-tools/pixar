@@ -126,6 +126,7 @@ class ExpConfig:
     init: bool = False
     no_ckpt: bool = False
     no_log: bool = False
+    is_continue_train: bool = False
     
     # below fields are not command line arguments
     _best_loss: float = 1e9
@@ -330,6 +331,8 @@ class ExpConfig:
             return self._num_grad_acc_step
         self._num_grad_acc_step = self.batch_size // (self.sub_size * self.num_gpu)
         self.batch_size = self.sub_size * self.num_gpu * self._num_grad_acc_step
+        if self._num_grad_acc_step <= 0:
+            raise ValueError(f"0 or negative graident accumulation obversed [{self._num_grad_acc_step}], plecase check batch size settings!")
         return self._num_grad_acc_step
 
     @property

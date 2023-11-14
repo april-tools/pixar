@@ -377,7 +377,7 @@ class LlamaForPatchSequenceClassification(LlamaModel):
         # map the input_embeds into vectors saperated by patches
         inputs_embeds = self.in_proj(inputs_embeds)
         inputs_embeds = inputs_embeds.flatten(2).transpose(1, 2)
-        eos_index = attention_mask.sum(dim=1) - 1
+        eos_index = attention_mask.sum(dim=1, dtype=torch.int) - 1
 
         # >>>>>>> below are copied from llamaModel
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -492,7 +492,7 @@ class LlamaForPatchSequenceClassification(LlamaModel):
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         # <<< before are copied from Llama
 
-        eos_logits = hidden_states[torch.arange(hidden_states.shape[0]), eos_index]
+        eos_logits = hidden_states[torch.arange(hidden_states.shape[0], dtype=torch.int), eos_index]
         logits = self.score(eos_logits)
 
 
