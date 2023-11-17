@@ -34,83 +34,83 @@ export PATCH_LEN=5
 
 export EXP_NAME='lllama_5'
 
-srun torchrun \
-    --nnodes=$NUM_NODES \
-    --nproc-per-node=$GPU_PER_NODE \
-    --rdzv-backend=c10d \
-    --rdzv-id=123 \
-    --rdzv-endpoint=$head_node_ip \
-    train.py --model LatentLlamaForSequenceClassification \
-        --exp_type ${EXP_NAME}_mrpc_ \
-        --backbone_path $BACKBONE_PATH \
-        --compressor_name $COMPRESSOR_NAME \
-        --compressor_path $COMPRESSOR_PATH \
-        --checkpoint_path /work/sc118/sc118/shared/checkpoints \
-        --optim AdamW \
-        --finetune_task glue \
-        --glue_task mrpc \
-        --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.01 --total_steps 100 --eval_freq 20 --save_freq 20 --warm_up_step 10 --best_save_freq 50 --seed 42 --batch_size 192 \
-        --sub_size 6 \
-        --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
-        --patch_len $PATCH_LEN \
-        --max_seq_length $MAX_NUM_PATCH \
-        --num_channel 1 --binary true --rgb false --mix_precision fp16 --half_coder true --mp_workers 8 \
-        --num_gpu_per_node $GPU_PER_NODE \
-        --num_node $NUM_NODES
+# srun torchrun \
+#     --nnodes=$NUM_NODES \
+#     --nproc-per-node=$GPU_PER_NODE \
+#     --rdzv-backend=c10d \
+#     --rdzv-id=123 \
+#     --rdzv-endpoint=$head_node_ip \
+#     train.py --model LatentLlamaForSequenceClassification \
+#         --exp_type ${EXP_NAME}_mrpc_ \
+#         --backbone_path $BACKBONE_PATH \
+#         --compressor_name $COMPRESSOR_NAME \
+#         --compressor_path $COMPRESSOR_PATH \
+#         --checkpoint_path /work/sc118/sc118/shared/checkpoints \
+#         --optim AdamW \
+#         --finetune_task glue \
+#         --glue_task mrpc \
+#         --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.01 --total_steps 100 --eval_freq 20 --save_freq 20 --warm_up_step 10 --best_save_freq 50 --seed 42 --batch_size 192 \
+#         --sub_size 6 \
+#         --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
+#         --patch_len $PATCH_LEN \
+#         --max_seq_length $MAX_NUM_PATCH \
+#         --num_channel 1 --binary true --rgb false --mix_precision fp16 --half_coder true --mp_workers 8 \
+#         --num_gpu_per_node $GPU_PER_NODE \
+#         --num_node $NUM_NODES
 
-srun torchrun \
-    --nnodes=$NUM_NODES \
-    --nproc-per-node=$GPU_PER_NODE \
-    --rdzv-backend=c10d \
-    --rdzv-id=123 \
-    --rdzv-endpoint=$head_node_ip \
-    train.py --model LatentLlamaForSequenceClassification \
-        --exp_type ${EXP_NAME}_wnli_ \
-        --backbone_path $BACKBONE_PATH \
-        --compressor_name $COMPRESSOR_NAME \
-        --compressor_path $COMPRESSOR_PATH \
-        --optim AdamW --finetune_task glue --glue_task wnli --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.01 --total_steps 200 --eval_freq 5 --save_freq 5 --warm_up_step 20 --best_save_freq 10 --seed 42 --batch_size 64 \
-        --sub_size 4 --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
-        --patch_len $PATCH_LEN \
-        --max_seq_length $MAX_NUM_PATCH --num_channel 1 --binary true --rgb false --mix_precision fp16 --half_coder true --mp_workers 8 \
-        --num_gpu_per_node $GPU_PER_NODE \
-        --num_node $NUM_NODES
+# srun torchrun \
+#     --nnodes=$NUM_NODES \
+#     --nproc-per-node=$GPU_PER_NODE \
+#     --rdzv-backend=c10d \
+#     --rdzv-id=123 \
+#     --rdzv-endpoint=$head_node_ip \
+#     train.py --model LatentLlamaForSequenceClassification \
+#         --exp_type ${EXP_NAME}_wnli_ \
+#         --backbone_path $BACKBONE_PATH \
+#         --compressor_name $COMPRESSOR_NAME \
+#         --compressor_path $COMPRESSOR_PATH \
+#         --optim AdamW --finetune_task glue --glue_task wnli --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.01 --total_steps 200 --eval_freq 5 --save_freq 5 --warm_up_step 20 --best_save_freq 10 --seed 42 --batch_size 64 \
+#         --sub_size 4 --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
+#         --patch_len $PATCH_LEN \
+#         --max_seq_length $MAX_NUM_PATCH --num_channel 1 --binary true --rgb false --mix_precision fp16 --half_coder true --mp_workers 8 \
+#         --num_gpu_per_node $GPU_PER_NODE \
+#         --num_node $NUM_NODES
 
-srun torchrun \
-    --nnodes=$NUM_NODES \
-    --nproc-per-node=$GPU_PER_NODE \
-    --rdzv-backend=c10d \
-    --rdzv-id=123 \
-    --rdzv-endpoint=$head_node_ip \
-    train.py --model LatentLlamaForSequenceClassification \
-        --exp_type ${EXP_NAME}_mnli_ \
-        --backbone_path $BACKBONE_PATH \
-        --compressor_name $COMPRESSOR_NAME \
-        --compressor_path $COMPRESSOR_PATH \
-        --optim AdamW --finetune_task glue --glue_task mnli --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.1 --total_steps 8000 --eval_freq 500 --save_freq 500 --warm_up_step 1000 --best_save_freq 1000 --seed 42 --batch_size 256 \
-        --sub_size $BATCH_SIZE --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
-        --patch_len $PATCH_LEN \
-        --max_seq_length $MAX_NUM_PATCH --num_channel 1 --binary true --rgb false --mix_precision fp16 --half_coder true --mp_workers 8 \
-        --num_gpu_per_node $GPU_PER_NODE \
-        --num_node $NUM_NODES
+# srun torchrun \
+#     --nnodes=$NUM_NODES \
+#     --nproc-per-node=$GPU_PER_NODE \
+#     --rdzv-backend=c10d \
+#     --rdzv-id=123 \
+#     --rdzv-endpoint=$head_node_ip \
+#     train.py --model LatentLlamaForSequenceClassification \
+#         --exp_type ${EXP_NAME}_mnli_ \
+#         --backbone_path $BACKBONE_PATH \
+#         --compressor_name $COMPRESSOR_NAME \
+#         --compressor_path $COMPRESSOR_PATH \
+#         --optim AdamW --finetune_task glue --glue_task mnli --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.1 --total_steps 8000 --eval_freq 500 --save_freq 500 --warm_up_step 1000 --best_save_freq 1000 --seed 42 --batch_size 256 \
+#         --sub_size $BATCH_SIZE --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
+#         --patch_len $PATCH_LEN \
+#         --max_seq_length $MAX_NUM_PATCH --num_channel 1 --binary true --rgb false --mix_precision fp16 --half_coder true --mp_workers 8 \
+#         --num_gpu_per_node $GPU_PER_NODE \
+#         --num_node $NUM_NODES
 
-srun torchrun \
-    --nnodes=$NUM_NODES \
-    --nproc-per-node=$GPU_PER_NODE \
-    --rdzv-backend=c10d \
-    --rdzv-id=123 \
-    --rdzv-endpoint=$head_node_ip \
-    train.py --model LatentLlamaForSequenceClassification \
-        --exp_type ${EXP_NAME}_sst2_ \
-        --backbone_path $BACKBONE_PATH \
-        --compressor_name $COMPRESSOR_NAME \
-        --compressor_path $COMPRESSOR_PATH \
-        --optim AdamW --finetune_task glue --glue_task sst2 --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.01 --total_steps 2000 --eval_freq 200 --save_freq 200 --warm_up_step 200 --best_save_freq 300 --seed 42 --batch_size 256 \
-        --sub_size $BATCH_SIZE --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
-        --patch_len $PATCH_LEN \
-        --max_seq_length $MAX_NUM_PATCH --num_channel 1 --binary true --rgb false --mix_precision fp16 --half_coder true --mp_workers 8 \
-        --num_gpu_per_node $GPU_PER_NODE \
-        --num_node $NUM_NODES
+# srun torchrun \
+#     --nnodes=$NUM_NODES \
+#     --nproc-per-node=$GPU_PER_NODE \
+#     --rdzv-backend=c10d \
+#     --rdzv-id=123 \
+#     --rdzv-endpoint=$head_node_ip \
+#     train.py --model LatentLlamaForSequenceClassification \
+#         --exp_type ${EXP_NAME}_sst2_ \
+#         --backbone_path $BACKBONE_PATH \
+#         --compressor_name $COMPRESSOR_NAME \
+#         --compressor_path $COMPRESSOR_PATH \
+#         --optim AdamW --finetune_task glue --glue_task sst2 --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.01 --total_steps 2000 --eval_freq 200 --save_freq 200 --warm_up_step 200 --best_save_freq 300 --seed 42 --batch_size 256 \
+#         --sub_size $BATCH_SIZE --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
+#         --patch_len $PATCH_LEN \
+#         --max_seq_length $MAX_NUM_PATCH --num_channel 1 --binary true --rgb false --mix_precision fp16 --half_coder true --mp_workers 8 \
+#         --num_gpu_per_node $GPU_PER_NODE \
+#         --num_node $NUM_NODES
 
 srun torchrun \
     --nnodes=$NUM_NODES \

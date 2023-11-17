@@ -409,16 +409,17 @@ class ExpConfig:
         return exp_config
     
     def continue_training(self) -> ExpConfig | None:
-        ckpt_path = Path(self.backbone_path).parent
+        ckpt_path = Path(self.backbone_path).parent.__str__()
         old = ExpConfig.from_checkpoint(ckpt_path)
         if old:
             self.current_step = old.current_step
             self._num_trained_samples = old._num_trained_samples
             self.total_steps = old.total_steps
             self._begin_ckpt_path = ckpt_path
+            self._continued = True
             print(f'Find checkpoint of previous training, continue training at step {self.current_step}/{self.total_steps}')
             print(f'There are {self._num_trained_samples} samples trained.')
-        return old
+        return self
     
     def load_optim_path(self) -> str | None:
         if self._begin_ckpt_path:
