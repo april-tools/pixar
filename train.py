@@ -5,8 +5,11 @@ from LatentPixel.training.train_autoencoder import train as train_autoencoder
 from LatentPixel.training.train_utils import init_dist_environ
 
 if __name__ == '__main__':
+    print('Parse training scripts')
     config = get_config()
-    config.continue_training()  # check if it's a continued training
+    print('Training config parsed')
+    if config.is_continue_train:
+        config.continue_training()  # check if it's a continued training
     print('Training config initialized')
     init_dist_environ(config)
     print(config.__dict__)

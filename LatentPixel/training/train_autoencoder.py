@@ -81,7 +81,6 @@ def train(config: ExpConfig):
 
             for _ in range(config.num_grad_acc_step - 1):
                 graph: TGraph = next(train_loader)
-                print('Patch_len: ', graph.patch_len)
                 graph.set_device(config.device_id)
                 preds: TGraph = model(graph)
 

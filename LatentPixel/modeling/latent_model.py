@@ -103,6 +103,7 @@ class LatentModel(nn.Module):
         latent._labels = img._labels
         recon = self.latent_forward(latent)
         loss = recon.loss
+        recon._labels = img._labels
 
         if self.has_decoder:
             recon = self.decode(recon)

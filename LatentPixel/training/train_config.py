@@ -57,6 +57,7 @@ class ExpConfig:
     render_path: str | PathLike = RENDER_PATH
     checkpoint_path: str | PathLike = CHECK_PATH
     dataset_paths: list[str | PathLike] = field(default_factory=lambda: ['']) 
+    prerendered: bool = False
     dataset_cache_path: str | PathLike = 'storage/cache'
     dataset_num_shards: int = 256
     seed: int = SEED
@@ -126,6 +127,7 @@ class ExpConfig:
     init: bool = False
     no_ckpt: bool = False
     no_log: bool = False
+    is_continue_train: bool = False
     
     # below fields are not command line arguments
     _best_loss: float = 1e9
@@ -179,7 +181,8 @@ class ExpConfig:
             max_len=self.max_len,
             seed=self.seed,
             shuffle=self.shuffle_dataset,
-            num_shards=self.dataset_num_shards
+            num_shards=self.dataset_num_shards,
+            prerendered=self.prerendered
         )
 
     @property
@@ -330,6 +333,8 @@ class ExpConfig:
             return self._num_grad_acc_step
         self._num_grad_acc_step = self.batch_size // (self.sub_size * self.num_gpu)
         self.batch_size = self.sub_size * self.num_gpu * self._num_grad_acc_step
+        if self._num_grad_acc_step <= 0:
+            raise ValueError(f"0 or negative graident accumulation obversed [{self._num_grad_acc_step}], plecase check batch size settings!")
         return self._num_grad_acc_step
 
     @property
@@ -406,16 +411,17 @@ class ExpConfig:
         return exp_config
     
     def continue_training(self) -> ExpConfig | None:
-        ckpt_path = Path(self.backbone_path).parent
+        ckpt_path = Path(self.backbone_path).parent.__str__()
         old = ExpConfig.from_checkpoint(ckpt_path)
         if old:
             self.current_step = old.current_step
             self._num_trained_samples = old._num_trained_samples
             self.total_steps = old.total_steps
             self._begin_ckpt_path = ckpt_path
+            self._continued = True
             print(f'Find checkpoint of previous training, continue training at step {self.current_step}/{self.total_steps}')
             print(f'There are {self._num_trained_samples} samples trained.')
-        return old
+        return self
     
     def load_optim_path(self) -> str | None:
         if self._begin_ckpt_path:

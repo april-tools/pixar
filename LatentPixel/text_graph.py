@@ -276,6 +276,8 @@ class TGraph:
     @property
     def num_text_patches(self) -> int | list[int]:
         if self._num_text_patches is not None:
+            if isinstance(self._num_text_patches, int):
+                return self._num_text_patches
             return [num for num in self._num_text_patches]
         
         if self._attention_mask is not None:

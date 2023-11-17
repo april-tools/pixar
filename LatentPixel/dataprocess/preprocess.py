@@ -12,7 +12,7 @@ def set_cpu_aff():
     os.system("taskset -p 0xffffffffff %d" % os.getpid())
     CPU_AFF_SETTED = True
 
-def collate_text(batch: dict, max_len: int | None = None) -> list[str]:
+def collate_text(batch: dict, max_len: int | None = None, min_len: int | None = None) -> list[str]:
     set_cpu_aff()
     texts: list[str] = batch['text']
     docs = []
@@ -42,7 +42,11 @@ def collate_text(batch: dict, max_len: int | None = None) -> list[str]:
                 length = 0
                 sents = []
         if len(sents) > 0:
-            samples.append(' '.join(sents))
+            final_sent = ' '.join(sents)
+            if min_len is None:
+                samples.append(final_sent)
+            elif len(final_sent) > min_len:
+                samples.append(final_sent)
 
     return {'text': samples}
 
@@ -71,7 +75,7 @@ def preprocess_pretrain_data(conf: PretrainDatasetConfig) -> Dataset:
     
     print(f'Split long sentences within max length {conf.max_len}')
     dataset = dataset.map(
-        partial(collate_text, max_len=conf.max_len),
+        partial(collate_text, max_len=conf.max_len, min_len=conf.min_len),
         batch_size=1000,
         drop_last_batch=False,
         batched=True,

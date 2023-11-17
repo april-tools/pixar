@@ -46,9 +46,11 @@ class RenderConfig:
 class PretrainDatasetConfig:
     dataset_paths: list[str] = field(default_factory=list)
     max_len: int = 800
+    min_len: int = 100
     seed: int = 42
     shuffle: bool = False
     num_shards: int = 256
+    prerendered: bool = False
         
     def save(self, folder: str | os.PathLike) -> str:
         os.makedirs(folder, exist_ok=True)
