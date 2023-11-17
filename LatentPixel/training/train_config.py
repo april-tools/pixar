@@ -57,6 +57,7 @@ class ExpConfig:
     render_path: str | PathLike = RENDER_PATH
     checkpoint_path: str | PathLike = CHECK_PATH
     dataset_paths: list[str | PathLike] = field(default_factory=lambda: ['']) 
+    prerendered: bool = False
     dataset_cache_path: str | PathLike = 'storage/cache'
     dataset_num_shards: int = 256
     seed: int = SEED
@@ -180,7 +181,8 @@ class ExpConfig:
             max_len=self.max_len,
             seed=self.seed,
             shuffle=self.shuffle_dataset,
-            num_shards=self.dataset_num_shards
+            num_shards=self.dataset_num_shards,
+            prerendered=self.prerendered
         )
 
     @property

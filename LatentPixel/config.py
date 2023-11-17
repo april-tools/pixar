@@ -50,6 +50,7 @@ class PretrainDatasetConfig:
     seed: int = 42
     shuffle: bool = False
     num_shards: int = 256
+    prerendered: bool = False
         
     def save(self, folder: str | os.PathLike) -> str:
         os.makedirs(folder, exist_ok=True)

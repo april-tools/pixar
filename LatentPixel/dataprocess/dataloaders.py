@@ -51,7 +51,28 @@ def render_batched_text(batch: list[dict[str, str]], mask_ratio: float, mask_typ
     img.attention_mask
 
     return img
-        
+
+def prepare_rendered_text(batch: list[dict[str, str]], mask_ratio: float, mask_type: str) -> torch.Tensor:
+    imgs = []
+    num_text_patches = []
+    texts = []
+    for sample in batch:
+        imgs.append(sample['image'])
+        num_text_patches.append(['num_text_patches'])
+        texts.append(sample['text'])
+    
+    imgs = torch.tensor(imgs, dtype=torch.long)
+    
+    result = TGraph()
+    result._value = imgs
+    result.patch_len = TGraph._patch_len
+    result._binary = TGraph._binary
+    result.num_text_patches = num_text_patches
+    result.text = texts
+
+    return result
+
+
 def collate_text(batch: dict, max_len: int | None = None) -> list[str]:
     texts: list[str] = batch['text']
     docs = []
@@ -148,6 +169,11 @@ def get_pretrain_dataloader(
 
     num_samples = len(dataset)
 
+    if data_conf.prerendered:
+        collate_fn = prepare_rendered_text
+    else:
+        collate_fn = render_batched_text
+
     if n_skip > 0:
         print(f'Skip first {n_skip} samples to continue training')
         dataset = SkipDataset(dataset, (n_skip // world_size) % num_samples)
@@ -156,7 +182,7 @@ def get_pretrain_dataloader(
         batch_size=batch_size,
         num_workers=num_workers,
         prefetch_factor=4,
-        collate_fn=partial(render_batched_text, mask_ratio=mask_ratio, mask_type=mask_type),
+        collate_fn=partial(collate_fn, mask_ratio=mask_ratio, mask_type=mask_type),
         worker_init_fn=partial(dataloader_init_fn, seed=data_conf.seed, render_config=render_conf),
         drop_last=True
     )

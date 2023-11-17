@@ -6,14 +6,14 @@ from datasets import load_dataset, Dataset
 import pandas as pd
 import pyarrow as pa
 
-# books = load_dataset('lucadiliello/bookcorpusopen', split='train')
-# books.save_to_disk('storage/bookcorpusopen', num_shards=256)    # shard the dataset for parallism
+books = load_dataset('lucadiliello/bookcorpusopen', split='train')
+books.save_to_disk('storage/bookcorpusopen', num_shards=256)    # shard the dataset for parallism
 
-# wiki = load_dataset('wikipedia', '20220301.en', split='train')
-# wiki.save_to_disk('storage/enwiki/', num_shards=256)
+wiki = load_dataset('wikipedia', '20220301.en', split='train')
+wiki.save_to_disk('storage/enwiki/', num_shards=256)
 
-# del books
-# del wiki
+del books
+del wiki
 
 TGraph.init_render(**DEFAULT_BINARY_RENDERING)
 
@@ -38,7 +38,7 @@ def add_image(sample: dict) -> dict:
     sample['num_text_patches'] = img.num_text_patches
     return sample
 
-dataset_with_im = dataset.map(add_image, num_proc=4)
+dataset_with_im = dataset.map(add_image, num_proc=2)
 
 
-dataset_with_im.save_to_disk('storage/booksAndWiki2', num_shards=256)
+dataset_with_im.save_to_disk('storage/booksAndWiki2/data', num_shards=256)
