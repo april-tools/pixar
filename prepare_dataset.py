@@ -15,20 +15,22 @@ import pyarrow as pa
 # del books
 # del wiki
 
-# dataset = preprocess_pretrain_data(
-#     PretrainDatasetConfig(
-#         dataset_paths=['storage/bookcorpusopen/', 'storage/enwiki/'],
-#         max_len=1180,
-#         min_len=100,
-#         seed=42,
-#         shuffle=True,
-#         num_shards=256
-#     )
-# )
-
-dataset = Dataset(pa.Table.from_pandas(pd.DataFrame([{'text': 'this is a sentence'},{'text': 'this is another sentence'}] * 10000)))
-
 TGraph.init_render(**DEFAULT_BINARY_RENDERING)
+
+
+dataset = preprocess_pretrain_data(
+    PretrainDatasetConfig(
+        dataset_paths=['storage/bookcorpusopen/', 'storage/enwiki/'],
+        max_len=1180,
+        min_len=100,
+        seed=42,
+        shuffle=True,
+        num_shards=256
+    )
+)
+
+# dataset = Dataset(pa.Table.from_pandas(pd.DataFrame([{'text': 'this is a sentence'},{'text': 'this is another sentence'}] * 10000)))
+
 
 def add_image(sample: dict) -> dict:
     img = TGraph.from_text(sample['text'])
@@ -36,7 +38,7 @@ def add_image(sample: dict) -> dict:
     sample['num_text_patches'] = img.num_text_patches
     return sample
 
-dataset_with_im = dataset.map(add_image, num_proc=2)
+dataset_with_im = dataset.map(add_image, num_proc=4)
 
 
-dataset_with_im.save_to_disk('storage/test', num_shards=256)
+dataset_with_im.save_to_disk('storage/booksAndWiki2', num_shards=256)
