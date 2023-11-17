@@ -33,6 +33,21 @@ from .training import GLUE_META
 
 BIN_FONT = 'PixeloidSans-mLxMm.ttf'
 
+DEFAULT_BINARY_RENDERING = {
+    'dpi': 80,
+    'font_size': 8,
+    'pixels_per_patch': 8,
+    'pad_size': 1,
+    'font_file': BIN_FONT,
+    'path': 'storage/pixel-base',
+    'rgb':  False,
+    'binary': True,
+    'max_seq_length': 720,
+    'mask_ratio': 0.25,
+    'patch_len': 2,
+    'num_workers': 1
+}
+
 __all__ = [
     'ModelType'
     'TGraph'
@@ -57,4 +72,5 @@ __all__ = [
     'SDAutoencoder'
     'BIN_FONT'
     'LatentLlamaForSequenceClassification'
+    'DEFAULT_BINARY_RENDERING'
 ]
