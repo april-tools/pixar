@@ -46,8 +46,8 @@ def render_batched_text(batch: list[dict[str, str]], mask_ratio: float, mask_typ
     for sent in batch:
         sents.append(sent['text'])
     img = TGraph.from_text(sents)
-    img.init_patch_mask(mask_type, ratio=mask_ratio)
-    img.patch_mask
+    # img.init_patch_mask(mask_type, ratio=mask_ratio)
+    # img.patch_mask
     img.attention_mask
 
     return img
