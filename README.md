@@ -48,6 +48,8 @@ pip install editdistance
 pip install -U scikit-learn
 pip install nltk
 pip install apache-beam
+python3 -m pip install paddlepaddle -i https://mirror.baidu.com/pypi/simple
+pip install "paddleocr>=2.0.1" # 推荐使用2.0.1+版本
 ```
 
 4. Setup the project
