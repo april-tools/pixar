@@ -347,7 +347,8 @@ class TGraph:
     
     @property
     def patch_mask(self):
-        return self.process(self._get_patch_mask())
+        # return self.process(self._get_patch_mask())
+        return None
     
     @patch_mask.setter
     def patch_mask(self, mask: torch.Tensor) -> None:
