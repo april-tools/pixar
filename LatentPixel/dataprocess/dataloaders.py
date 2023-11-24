@@ -58,7 +58,7 @@ def prepare_rendered_text(batch: list[dict[str, str]], mask_ratio: float, mask_t
     texts = []
     for sample in batch:
         imgs.append(sample['image'])
-        num_text_patches.append(['num_text_patches'])
+        num_text_patches.append(sample['num_text_patches'])
         texts.append(sample['text'])
     
     imgs = torch.tensor(imgs, dtype=torch.long)
@@ -181,7 +181,7 @@ def get_pretrain_dataloader(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        prefetch_factor=4,
+        prefetch_factor=4 if num_workers > 0 else None,
         collate_fn=partial(collate_fn, mask_ratio=mask_ratio, mask_type=mask_type),
         worker_init_fn=partial(dataloader_init_fn, seed=data_conf.seed, render_config=render_conf),
         drop_last=True
@@ -250,7 +250,7 @@ def get_pixel_pretrain_dataloader(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        prefetch_factor=4,
+        prefetch_factor=4 if num_workers > 0 else None,
         collate_fn=partial(render_batched_text, mask_ratio=mask_ratio, mask_type=mask_type),
         worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
         drop_last=True
