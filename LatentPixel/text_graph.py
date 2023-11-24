@@ -10,7 +10,6 @@ import torch
 from torchvision.transforms import PILToTensor, Compose, ToPILImage, Normalize
 from transformers import logging
 import numpy as np
-import pytesseract
 
 import PIL
 from PIL.Image import Image
@@ -38,6 +37,7 @@ from .config import (
     PIXEL_DEFAULT_IMAGE_MEAN,
     RenderConfig
 )
+from .ocr import ocr
 
 from pixel import Encoding, PIXELForPreTrainingOutput
 
@@ -478,12 +478,14 @@ class TGraph:
             graph._value = graph._from_PIL(img)
         return graph
 
-    def _to_PIL(self, value: torch.Tensor) -> Image:
+    def _to_PIL(self, value: torch.Tensor, span: bool=False, span_ratio: float=1.2) -> Image:
+        if span:
+            value = self._span(value, span_ratio)
         if self._binary:
             return self._val2pil_binary(value.float())
         return self._val2pil(value.clamp(0, 1))
 
-    def to_PIL(self, square: bool=True, contour: float = 0) -> Image | list[Image]:
+    def to_PIL(self, square: bool=True, contour: float = 0, span: bool=False, span_ratio: float=1.2, sample_method: str='threshold', threshold: float=BINARY_THRESHOLD) -> Image | list[Image]:
         value = self.value
         if contour > 0:
             if self._contoru is ...:
@@ -496,9 +498,9 @@ class TGraph:
             value = self._squarelize(value)
         
         if value.dim() == 3:
-            return self._to_PIL(value)
+            return self._to_PIL(value, span=span, span_ratio=span_ratio)
         
-        return [self._to_PIL(img) for img in value]
+        return [self._to_PIL(img, span=span, span_ratio=span_ratio) for img in value]
     
     def _gen_contour(self) -> torch.Tensor:
         contour = torch.zeros(self.patch_size, get_num_patches() * self.patch_size, dtype=torch.float)
@@ -660,33 +662,6 @@ class TGraph:
             
         return ims
     
-    # def squarelize(self) -> TGraph:
-    #     if self.is_squre:
-    #         return self
-        
-    #     self._patch_size = self._value.shape[-2]
-    #     num_rows = int(sqrt(self._value.shape[-1] // self._patch_size))
-    #     rows = torch.tensor_split(self._value, num_rows, dim=-1)
-    #     self._value = torch.cat(rows, dim=-2)
-
-    #     return self
-    
-    # def unsquarelize(self, patch_size: int | None = None) -> TGraph:
-    #     if not self.is_squre:
-    #         return self
-        
-    #     if patch_size:
-    #         self._patch_size = patch_size
-
-    #     if self._patch_size is None:
-    #         self._patch_size = self.patch_size
-
-    #     num_rows = self._value.shape[-2] // self._patch_size
-    #     rows = torch.tensor_split(self._value, num_rows, dim=-2)
-    #     self._value = torch.cat(rows, dim=-1)
-    
-    #     return self
-    
     @classmethod
     def reconstruct(cls, origin: TGraph, generated: TGraph, do_clamp: bool = False) -> TGraph:
         recon = cls()
@@ -710,16 +685,48 @@ class TGraph:
         recon.patch_size = origin.patch_size
 
         return recon
+
+    @torch.no_grad()
+    def _span(self, value: torch.Tensor, span_ratio: float) -> torch.Tensor:
+        '''
+        Span the image into a large image, to have better ocr effect
+        image values are within the range [0, 1]
+        '''
+        assert span_ratio > 1, f'span_ratio must larger than 1, <{span_ratio}> found'
+        if value.dim() == 4:
+            b, c, h, w = value.shape
+            sp = int(max(w, h) * span_ratio)
+            canvas = torch.ones([b, c, sp, sp], dtype=value.dtype)
+        elif value.dim() == 3:
+            c, h, w = value.shape
+            b = None
+            sp = int(max(w, h) * span_ratio)
+            canvas = torch.ones([c, sp, sp], dtype=value.dtype)
+
+
+        bh = sp // 2 - h // 2
+        eh = bh + h
+        bw = sp // 2 - w // 2
+        ew = bw + w
+        canvas[..., :, bh:eh, bw:ew] = value
+        return canvas
     
     @torch.no_grad()
-    def ocr(self) -> str | list[str]:
-        imgs = self.to_PIL(square=False)
-        if isinstance(imgs, list):
-            self.text = [pytesseract.image_to_string(img) for img in imgs]
-        else:
-            self.text = pytesseract.image_to_string(imgs)
+    def ocr(self, square: bool=False, method: str = 'PaddleOCR', span: bool=False, span_ratio: float=1.2, scale: float=3.0, sample_method: str='threshold', threshold: float=BINARY_THRESHOLD) -> str | list[str]:
+        """Ocr the image
 
-        return self.text
+        Args:
+            square (bool, optional): Whether to reshape the image to a square. Defaults to False.
+            method (str, optional): "PaddleOCR" or "tesseract". Defaults to 'PaddleOCR'.
+            span (bool, optional): Whether to span the image into a square iamge by filling white space. Defaults to False.
+            span_ratio (float, optional): How large we enlarge the original image. Defaults to 1.2.
+            scale (float, optional): Resize the image by the scale. Defaults to 3.0.
+
+        Returns:
+            str | list[str]: Recognized texts
+        """
+        imgs = self.to_PIL(square=square, span=span, span_ratio=span_ratio, sample_method=sample_method, threshold=threshold)
+        return ocr(imgs, method=method, scale=scale)
 
     def half(self) -> TGraph:
         self._half = True
