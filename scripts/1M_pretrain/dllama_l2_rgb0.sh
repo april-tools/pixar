@@ -1,40 +1,41 @@
 #!/bin/bash
+#SBATCH --partition=gpu
+#SBATCH --nodes=4
+#SBATCH --gres=gpu:4
+#SBATCH --time=96:00:00
+#SBATCH --qos=gpu
+#SBATCH --exclusive
 
-# Grid Engine options (lines prefixed with #$)
-# Runtime limit of 1 hour:
-#$ -l h_rt=48:00:00
-#
-# Set working directory to the directory where the job is submitted from:
-#$ -cwd
-#
-# Request one GPU in the gpu queue:
-#$ -q gpu 
-#$ -pe gpu-a100 4
-#
-# Request 64 GB system RAM 
-# the total system RAM available to the job is the value specified here multiplied by 
-# the number of requested GPUs (above)
-#$ -l h_vmem=64G
+export NUM_NODES=4
+export GPU_PER_NODE=4
 
-source /exports/eddie3_homes_local/s1891075/.bashrc 
+source /work/sc118/sc118/yintaotai/.bashrc
+conda activate pt2hfpy310
 
-conda activate test
+module load nvidia/nvhpc/22.11
 
-export NUM_GPU_PER_NODE=4
-export NUM_NODES=1
+echo $SLURM_JOB_NODELIST
 
-export OMP_NUM_THREADS=64
+nodes=( $( scontrol show hostnames $SLURM_JOB_NODELIST ) )
+nodes_array=($nodes)
+head_node=${nodes_array[0]}
+head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
 
-torchrun    \
+echo Head node IP: $head_node_ip
+
+export OMP_NUM_THREADS=32
+
+srun torchrun \
+    --nnodes=$NUM_NODES \
+    --nproc-per-node=$GPU_PER_NODE \
     --rdzv-backend=c10d \
-    --rdzv-endpoint=localhost:0 \
-    --nnodes=$NUM_NODES  \
-    --nproc-per-node=$NUM_GPU_PER_NODE  \
+    --rdzv-id=123 \
+    --rdzv-endpoint=$head_node_ip \
     train.py \
     --model 'LatentLlama' \
     --exp_type 'pretrain' \
-    --backbone_path /exports/eddie/scratch/s1891075/pixelplus/Pretrained100k/dllama_2_rgb_100k/backbone \
-    --dataset_path /home/s1891075/msc_project/storage/BooksAndWiki2 \
+    --backbone_path /work/sc118/sc118/shared/checkpoints/100kModels/dllama_2_rgb_100k/backbone \
+    --dataset_path /work/sc118/sc118/shared/BooksAndWiki2 \
     --shuffle_dataset false \
     --optim 'AdamW' \
     --lr 3e-4 \
@@ -48,7 +49,7 @@ torchrun    \
     --eval_freq 10000 \
     --seed 42 \
     --batch_size 384 \
-    --sub_size 96 \
+    --sub_size 24 \
     --dpi 80 \
     --font_size 8 \
     --font_file PixeloidSans-mLxMm.ttf \
@@ -60,8 +61,8 @@ torchrun    \
     --max_seq_length 720 \
     --mix_precision fp16 \
     --half_coder false \
-    --mp_workers 16 \
+    --mp_workers 8 \
     --prerendered false \
     --is_continue_train true \
-    --num_gpu_per_node $NUM_GPU_PER_NODE \
+    --num_gpu_per_node $GPU_PER_NODE \
     --num_node $NUM_NODES  \

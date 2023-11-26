@@ -5,6 +5,12 @@ import pytesseract
 
 import numpy as np
 
+PADDLE: PaddleOCR | None = None
+
+def init_paddle():
+    global PADDLE
+    PADDLE = PaddleOCR(det=False, cls = False, lang="en")
+
 def ocr(imgs: list[Image] | Image, method: str, scale: float) -> list[str] | str:
     if isinstance(imgs, list):
         h = imgs[0].size[0]
@@ -25,10 +31,12 @@ def ocr(imgs: list[Image] | Image, method: str, scale: float) -> list[str] | str
         
     return ocr_fn(imgss)
 
-OCR = PaddleOCR(det=False, cls = False, lang="en")
 def _one_image_paddleocr(img: Image) -> str:
+    global PADDLE
+    if PADDLE is None:
+        init_paddle()
     img = np.array(img)
-    rec = OCR.ocr(img, cls=False)
+    rec = PADDLE.ocr(img, cls=False)
     print(rec)
     result = ''
     if rec[0] is None:
