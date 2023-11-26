@@ -37,7 +37,7 @@ DEFAULT_BINARY_RENDERING = {
     'dpi': 80,
     'font_size': 8,
     'pixels_per_patch': 8,
-    'pad_size': 1,
+    'pad_size': 3,
     'font_file': BIN_FONT,
     'path': 'storage/pixel-base',
     'rgb':  False,

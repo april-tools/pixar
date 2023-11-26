@@ -85,7 +85,7 @@ def train(config: ExpConfig):
         compressor = model.compressor.__class__(config.compressor_path)
         compressor.eval()
 
-    train_loader = train_loader_fn(config._num_trained_samples)
+    train_loader = train_loader_fn(0)   # do not skip for now TODO: add control for this
     train_loader = iter(train_loader)
 
     output(f'Total steps: {config.total_steps}')

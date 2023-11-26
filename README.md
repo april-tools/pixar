@@ -35,19 +35,14 @@ The step by step creation of the environment I performed.
 ```
 conda create -n {name} python=3.10
 conda activate {name}
+conda install -c conda-forge pycairo=1.24.0 cairo=1.16.0 fonttools=4.25.0 pygobject=3.42.1 manimpango=0.4.1 # make sure the version matches, othewise the rendered text may different
 conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
-pip install transformers datasets tokenizers diffusers["torch"]
-pip install opencv-python
-pip install wandb
-conda install -c conda-forge pycairo
-conda install -c conda-forge pygobject
-conda install -c conda-forge manimpango
-conda install -c conda-forge fonttools
-pip install pytesseract
-pip install editdistance
-pip install -U scikit-learn
-pip install nltk
-pip install apache-beam
+pip install transformers==4.34.1 datasets==2.14.6 tokenizers==0.14.1 diffusers["torch"]==0.17.1
+pip install opencv-python==4.6.0.66 opencv-contrib-python==4.6.0.66
+pip install wandb==0.15.12 pytesseract==0.3.10 editdistance==0.6.2 scikit-image==0.22.0 scikit-learn==1.3.0
+pip install nltk==3.8.1 apache-beam==2.51.0
+pip install paddlepaddle==2.5.2 paddleocr==2.7.0.3
+pip install adamr
 ```
 
 4. Setup the project

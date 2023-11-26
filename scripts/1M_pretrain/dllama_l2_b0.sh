@@ -26,8 +26,8 @@ torchrun    \
     --save_freq 10000 \
     --eval_freq 10000 \
     --seed 42 \
-    --batch_size 512 \
-    --sub_size 128 \
+    --batch_size 384 \
+    --sub_size 96 \
     --dpi 80 \
     --font_size 8 \
     --font_file PixeloidSans-mLxMm.ttf \
