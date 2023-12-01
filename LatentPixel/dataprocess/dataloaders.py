@@ -35,7 +35,7 @@ class SkipDataset(Dataset):
 
 def dataloader_init_fn(worker_id, seed: int, render_config: RenderConfig) -> None:
     seed_everyting(seed)
-    os.system("taskset -p 0xffffffffff %d" % os.getpid())
+    os.system("taskset -p 0xfffffffffffffffffff %d" % os.getpid())
     print(f'initialize the render with parameters {render_config.to_dict()}')
     render_params = render_config.to_dict()
     TGraph.init_render(**render_params)
