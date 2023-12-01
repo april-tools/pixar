@@ -3,8 +3,10 @@ from LatentPixel.training.finetune_glue import train as train_glue
 from LatentPixel.training.pretrain_gan import train as train_gan
 from LatentPixel.training.train_autoencoder import train as train_autoencoder
 from LatentPixel.training.train_utils import init_dist_environ
+import os
 
 if __name__ == '__main__':
+    os.system("taskset -p 0xffffffffffffffffffffff %d" % os.getpid())
     print('Parse training scripts')
     config = get_config()
     print('Training config parsed')
