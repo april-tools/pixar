@@ -217,8 +217,8 @@ class TGraph:
             return None
         if self.device is not None:
             value = value.to(self.device)
-        if self._binary:
-            return (value > BINARY_THRESHOLD).long()
+        # if self._binary:
+        #     return (value > BINARY_THRESHOLD).long()
         if self._half:
             value = value.half()
         else:
@@ -243,9 +243,9 @@ class TGraph:
         
         mask = torch.clone(self.attention_mask)
         assert mask.dim() == 2
-        inds = (mask.sum(-1) - 2).type(torch.long)
+        inds = (mask.sum(-1) - 1).type(torch.int)
         num = mask.shape[0]
-        mask.T[inds, list(range(num))] = 0
+        mask[torch.arange(0, num), inds] = 0
         self._text_mask = mask
 
         return self.process(mask)

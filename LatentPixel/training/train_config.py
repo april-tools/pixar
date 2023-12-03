@@ -79,8 +79,11 @@ class ExpConfig:
     decay: float = 0.01
     momentum: float = 0.95
     clip: float = 1.0
+    gan_total_steps: int = 1000
     gan_ratio: float = 0.5
     gan_ratio_warm_up_steps: int = 100
+    gan_lr: float = 1e-5
+    gan_lr_warm_up_steps: int = 100
     mask_ratio: float = 0.25
     mask_type: str = 'span'
     total_steps: int = 4000 # number of parameter update steps
@@ -152,6 +155,7 @@ class ExpConfig:
     _min_metrics: defaultdict = field(default_factory=dict) 
     _min_metrics_step: defaultdict = field(default_factory=dict)
     _begin_ckpt_path: str = None
+    _begin_gan_step: int = None
     
     def update_metric(self, name: str, value: float):
         if name not in self._metrics:
@@ -187,13 +191,16 @@ class ExpConfig:
 
     @property
     def currnt_gan_ratio(self) -> float:
-        if self.current_step > self.gan_ratio_warm_up_steps:
+        if self._begin_gan_step is None:
+            self._begin_gan_step = self.current_step
+            
+        current_step = self.current_step - self._begin_gan_step
+        if current_step > self.gan_ratio_warm_up_steps:
             ratio = self.gan_ratio
         else:
-            ratio = self.current_step / self.gan_ratio_warm_up_steps * self.gan_ratio
+            ratio = current_step / self.gan_ratio_warm_up_steps * self.gan_ratio
         return ratio
             
-
     @property
     def num_labels(self) -> int:
         if self.finetune_task != 'glue':

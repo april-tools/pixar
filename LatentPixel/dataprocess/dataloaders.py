@@ -21,6 +21,19 @@ from datasets import load_dataset, interleave_datasets, load_from_disk
 from datasets.distributed import split_dataset_by_node
 
 
+class FakeDataset(Dataset):
+    
+    def __init__(self, num: int=1024) -> None:
+        super().__init__()
+        self.num = num
+        
+    def __len__(self) -> int:
+        return self.num
+    
+    def __getitem__(self, index) -> Any:
+        return 'This is a sentence'
+
+
 class SkipDataset(Dataset):
     def __init__(self, dataset: Dataset, n_skip: int = 0) -> None:
         super().__init__()
@@ -126,6 +139,34 @@ def collate_glue(batch: dict) -> TGraph:
     tgraph.attention_mask   # init the attention mask
     
     return tgraph
+
+def get_fake_dataloader(
+    data_conf: PretrainDatasetConfig,
+    render_conf: RenderConfig,
+    cache_path: str | os.PathLike,
+    batch_size: int,
+    n_skip: int,
+    num_workers: int,
+    rank: int,
+    world_size: int,
+    mask_ratio: float = 0.25,
+    mask_type: str = 'rand'
+) -> DataLoader:
+    
+    dataset = FakeDataset()
+    
+    loader = DataLoader(
+        dataset=dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        prefetch_factor=4 if num_workers > 0 else None,
+        collate_fn=partial(render_batched_text, mask_ratio=mask_ratio, mask_type=mask_type),
+        worker_init_fn=partial(dataloader_init_fn, seed=data_conf.seed, render_config=render_conf),
+        drop_last=True
+    )
+    TGraph.init_render(**asdict(render_conf))
+    return loader
+    
 
 def get_pretrain_dataloader(
     data_conf: PretrainDatasetConfig,

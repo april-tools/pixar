@@ -26,8 +26,8 @@ class DiscriminatorConfig:
 
     # Input data
     num_channel: int = 3
-    patch_width: int = 16
-    patch_height: int = 16
+    patch_len: int = 1
+    pixel_per_patch: int = 16
 
     def save(self, folder: str | PathLike) -> str:
         os.makedirs(folder, exist_ok=False)
@@ -97,8 +97,8 @@ class Discriminator(nn.Module):
         self.in_proj = nn.Conv2d(
             in_channels=config.num_channel,
             out_channels=config.hidden_size,
-            kernel_size=[config.patch_height, config.patch_width],
-            stride=config.patch_width
+            kernel_size=(config.pixel_per_patch, config.pixel_per_patch * config.patch_len),
+            stride=config.pixel_per_patch * config.patch_len
         )
         self.blocks = nn.Sequential(
             *[DiscriminatorBlock(config) for _ in range(config.n_blocks)]
@@ -120,27 +120,21 @@ class Discriminator(nn.Module):
         # Average the loss per patch
         return (lossfn(logits, target) * mask).sum() / mask.sum()
 
-    def forward(self, input: TGraph, target: int) -> TGraph:
+    def forward(self, input: TGraph, target: int) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Target is 0 or 1, 1 means real, 0 means fake
         """
-        images = input.unsquarelize().value
-
-        inputs_embeds = self.in_proj(images)
+        inputs_embeds = self.in_proj(input._value.to(self.in_proj.weight.device).float())
         inputs_embeds = inputs_embeds.flatten(2).transpose(1, 2)
         logger.warning_once(f'Discriminator inputs_embeds shape {inputs_embeds.shape}')
 
         hidden = self.blocks(inputs_embeds)
-        logger.warning_once(f'Discriminator inputs_embeds shape {hidden.shape}')
+        logger.warning_once(f'Discriminator hidden vector shape {hidden.shape}')
 
         logits = self.out_proj(hidden)
         loss = self.forward_loss(logits, input.text_mask, target)
 
-        result = TGraph()
-        result._value = logits
-        result.loss = loss
-
-        return result
+        return logits, loss
     
     def save(self, folder: str | PathLike) -> None:
         self.config.save(folder)
