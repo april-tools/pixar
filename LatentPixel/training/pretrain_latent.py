@@ -49,7 +49,7 @@ def init_exp(config: ExpConfig) -> tuple[LatentModel, callable, callable, dict]:
     '''
     Initialize models, wraps, optimizers, and dataloaders
     '''
-    model, optim_parts = prepare_model(config)
+    model, optim_parts, _, _ = prepare_model(config)
         
     # init dataloaders
     match config.task:
@@ -85,7 +85,7 @@ def train(config: ExpConfig):
         compressor = model.compressor.__class__(config.compressor_path)
         compressor.eval()
 
-    train_loader = train_loader_fn(config._num_trained_samples)   # do not skip for now TODO: add control for this
+    train_loader = train_loader_fn(config._num_trained_samples)
     train_loader = iter(train_loader)
 
     output(f'Total steps: {config.total_steps}')

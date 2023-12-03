@@ -202,7 +202,7 @@ def distributed_average(numbers: list | torch.Tensor | float, device: torch.devi
     if not isinstance(numbers, torch.Tensor):
         numbers = torch.tensor(numbers, device=device)
 
-    dist.reduce(numbers, dst=0, op=dist.ReduceOp.SUM)
+    dist.all_reduce(numbers, op=dist.ReduceOp.SUM)
     numbers /= dist.get_world_size()
     
     if return_type == 'list':
@@ -212,12 +212,12 @@ def distributed_average(numbers: list | torch.Tensor | float, device: torch.devi
     
     return numbers
 
-def backward(loss: torch.Tensor, optim_parts: dict, config: ExpConfig | None = None) -> None:
+def backward(loss: torch.Tensor, optim_parts: dict, config: ExpConfig | None = None, retain_graph: bool=None) -> None:
     scaler: ShardedGradScaler = optim_parts['scaler']
     if scaler is None:
         loss.backward()
     else:
-        scaler.scale(loss).backward()
+        scaler.scale(loss).backward(retain_graph=retain_graph)
 
 def step(config: ExpConfig, optim_parts: dict, model: nn.Module | FSDP, update_progress_bar: bool = True) -> None:
     optim = optim_parts['optim']
@@ -409,17 +409,30 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
     else:
         model: Compressor
         params = model.parameters()
+        
+    # Load the discriminator from path
+    if config.discriminator_path is not None and len(config.discriminator_path) > 0:
+        disc_config = DiscriminatorConfig.load(config.discriminator_path)
+        disc_config.num_channel = config.num_channel
+        disc_config.patch_len = config.patch_len
+        disc_config.pixel_per_patch = config.pixels_per_patch
+        disc = Discriminator.load(folder=config.discriminator_path, config=disc_config)
+    else:
+        disc = None
 
     # init optimizer
     optim = get_optimizer(params, config)
+    disc_optim = get_optimizer(disc.parameters(), config) if disc is not None else None
         
     if not isinstance(model, Compressor):
         model.backbone = wrap_model(model.backbone, config)
     else:
         model = wrap_model(model, config)
+    disc = wrap_model(disc, config) if disc is not None else None
 
     # init scheduler
     scheduler = get_LrScheduler(optim, config)
+    disc_scheduler = get_LrScheduler(disc_optim, config, True) if disc is not None else None
 
     optim_path = config.load_optim_path()
     if optim_path:
@@ -430,22 +443,30 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
     if scheduler_path:
         scheduler.load_state_dict(torch.load(scheduler_path, map_location=f'cuda:{config.device_id}'))
     
-    # init the scheduler for mixedprecision training
+    # init the scaler for mixedprecision training
     scaler = None
+    disc_scaler = None
     if config.mix_precision == 'fp16':
         print('init the gradscaler for mixed-precision training')
         scaler = ShardedGradScaler()    # This works for both DDP and FSDP
+        disc_scaler = ShardedGradScaler()
 
     optim_parts = {
         'optim': optim,
         'scheduler': scheduler,
         'scaler': scaler
     }
+    
+    disc_optim_parts = {
+        'optim': disc_optim,
+        'scheduler': disc_scheduler,
+        'scaler': disc_scaler
+    }
 
     init_progress_bar(config)
     init_render(config.render_config)
 
-    return model, optim_parts
+    return model, optim_parts, disc, disc_optim_parts
 
 def prepare_gan(config: ExpConfig) -> tuple[LatentModel, dict, Discriminator, dict]:
     # Select the correct model to load according to the config
@@ -638,14 +659,33 @@ def get_CosineAnnealingWithLrWarmUpLR(optimizer: Optimizer, warmup_steps:int, mi
     lr2 = CosineAnnealingLR(optimizer, T_max=total_steps-warmup_steps , eta_min=min_lr, verbose=verbose)
     return SequentialLR(optimizer, [lr1, lr2], milestones=[warmup_steps], verbose=verbose)
 
-def get_LrScheduler(optimizer: Optimizer, conf: ExpConfig) -> LRScheduler:
+def get_ConstantWithLrWarmUpLR(optimizer: Optimizer, warmup_steps: int, total_steps: int, verbose: bool = ...) -> SequentialLR:
+    lr1 = LinearLR(optimizer, start_factor=1e-5, end_factor=1.0, total_iters=warmup_steps, verbose=verbose)
+    lr2 = LinearLR(optimizer, start_factor=1.0, end_factor=1.0, total_iters=total_steps-warmup_steps, verbose=verbose)
+    return SequentialLR(optimizer, [lr1, lr2], milestones=[warmup_steps], verbose=verbose)
+
+def get_LrScheduler(optimizer: Optimizer, conf: ExpConfig, is_gan: bool=False) -> LRScheduler:
     verbose = True if conf.rank == 0 else False
+    if is_gan:
+        warm_up_step = conf.gan_lr_warm_up_steps
+        lr = conf.gan_lr
+        total_steps = conf.gan_total_steps
+    else:
+        warm_up_step = conf.warm_up_step
+        lr = conf.lr
+        total_steps = conf.total_steps
+        
     match conf.scheduler:
         case 'CosineAnnealingLR':
-            if conf.warm_up_step > 0:
-                scheduler = get_CosineAnnealingWithLrWarmUpLR(optimizer, warmup_steps=conf.warm_up_step, min_lr=0.1*conf.lr, total_steps=conf.total_steps, verbose=verbose)
+            if warm_up_step > 0:
+                scheduler = get_CosineAnnealingWithLrWarmUpLR(optimizer, warmup_steps=warm_up_step, min_lr=0.1*lr, total_steps=total_steps, verbose=verbose)
             else:
                 scheduler = CosineAnnealingLR(optimizer, T_max=conf.total_steps, eta_min=0.1*conf.lr, verbose=verbose)
+        case 'ConstantLR':
+            if warm_up_step > 0:
+                scheduler = get_ConstantWithLrWarmUpLR(optimizer, warm_up_step, total_steps, verbose=verbose)
+            else:
+                scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=1.0, total_iters=total_steps, verbose=verbose)
         case '':
             scheduler = None
         case _:

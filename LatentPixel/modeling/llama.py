@@ -31,9 +31,9 @@ class LlamaDecoderLayer(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
         if getattr(config, "flash", True):
-            print("flash attention enabled!")
+            logger.warning_once("flash attention enabled!")
         else:
-            print("flash attention disabled!")
+            logger.warning_once("flash attention disabled!")
         self.self_attn = (
             LlamaAttention(config=config)
             if not getattr(config, "flash", False)
