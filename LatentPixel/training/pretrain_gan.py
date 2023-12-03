@@ -104,6 +104,7 @@ def train(config: ExpConfig):
     output(f'Batch size: {config.batch_size}')
     
     begin_step = config.current_step
+    grad_ratio: float = -0.1
     while config.current_step <= config.gan_total_steps + begin_step:
         output(f'Step: {config.current_step}')
         running_recon_loss: float = 0.0
@@ -116,7 +117,6 @@ def train(config: ExpConfig):
         fakes: list[TGraph] = []
         reals: list[TGraph] = []
         
-        grad_ratio: float = -0.1
         running_recon_grad: float = 0.0
         running_gan_grad: float = 0.0
 
