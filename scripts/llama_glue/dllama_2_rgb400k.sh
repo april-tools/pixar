@@ -25,7 +25,7 @@ echo Head node IP: $head_node_ip
 
 export OMP_NUM_THREADS=20
 
-export BACKBONE_PATH='/work/sc118/sc118/yintaotai/msc_project/storage/shared/checkpoints/100kModels/dllama_2_rgb_100k/backbone'
+export BACKBONE_PATH='/work/sc118/sc118/yintaotai/msc_project/storage/checkpoints/pretrain/lpixel_pretrain/LatentLlama/20231126-181538/400000/backbone'
 export COMPRESSOR_PATH=''
 export COMPRESSOR_NAME=''
 export BATCH_SIZE=8
@@ -33,7 +33,7 @@ export MAX_NUM_PATCH=720
 export PATCH_LEN=2
 export WANDB__SERVICE_WAIT=300
 
-export EXP_NAME='dllama_2_rgb_1M_glue'
+export EXP_NAME='dllama_2_rgb'
 
 srun torchrun \
     --nnodes=$NUM_NODES \
@@ -114,7 +114,7 @@ srun torchrun \
     train.py --model LatentLlamaForSequenceClassification \
         --exp_type ${EXP_NAME}_stsb_ \
         --backbone_path $BACKBONE_PATH \
-        --optim AdamW --finetune_task glue --glue_task stsb --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.01 --total_steps 2000 --eval_freq 100 --save_freq 100 --warm_up_step 100 --best_save_freq 200 --seed 42 --batch_size 64 \
+        --optim AdamW --finetune_task glue --glue_task stsb --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.01 --total_steps 15000 --eval_freq 500 --save_freq 500 --warm_up_step 1000 --best_save_freq 200 --seed 42 --batch_size 64 \
         --sub_size 4 --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
         --patch_len $PATCH_LEN \
         --max_seq_length $MAX_NUM_PATCH --num_channel 3 --binary false --rgb true --mix_precision fp16 --half_coder true --mp_workers 8 \

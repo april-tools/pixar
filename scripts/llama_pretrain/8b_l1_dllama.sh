@@ -2,7 +2,7 @@
 #SBATCH --partition=gpu
 #SBATCH --nodes=4
 #SBATCH --gres=gpu:4
-#SBATCH --time=96:00:00
+#SBATCH --time=40:30:0
 #SBATCH --qos=gpu
 #SBATCH --exclusive
 
@@ -23,7 +23,7 @@ head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
 
 echo Head node IP: $head_node_ip
 
-export OMP_NUM_THREADS=32
+export OMP_NUM_THREADS=20
 
 srun torchrun \
     --nnodes=$NUM_NODES \
@@ -33,36 +33,36 @@ srun torchrun \
     --rdzv-endpoint=$head_node_ip \
     train.py \
     --model 'LatentLlama' \
-    --exp_type 'pretrain_2_rgb_540k' \
-    --backbone_path /work/sc118/sc118/yintaotai/msc_project/storage/checkpoints/pretrain/lpixel_pretrain/LatentLlama/20231126-181538/540000/backbone \
-    --dataset_path /work/sc118/sc118/shared/BooksAndWiki2 \
-    --shuffle_dataset false \
+    --exp_type 'dllama_pretrain' \
+    --backbone_path storage/llama \
+    --dataset_paths /work/sc118/sc118/shared/datasets/bookAndwiki \
+    --checkpoint_path /work/sc118/sc118/shared/checkpoints \
+    --max_len 3000 \
+    --dataset_num_shards 256 \
+    --shuffle_dataset true \
     --optim 'AdamW' \
     --lr 3e-4 \
     --beta1 0.9 \
     --beta2 0.95 \
     --decay 0.1 \
     --total_steps 1000000 \
-    --stop_step 1000000 \
+    --stop_step 100000 \
     --warm_up_step 2000 \
     --save_freq 10000 \
-    --eval_freq 10000 \
+    --eval_freq 5000 \
     --seed 42 \
     --batch_size 384 \
     --sub_size 24 \
-    --dpi 80 \
-    --font_size 8 \
     --font_file PixeloidSans-mLxMm.ttf \
+    --dpi 80 \
     --pixels_per_patch 8 \
-    --patch_len 2 \
-    --num_channel 3 \
-    --binary false \
-    --rgb true \
-    --max_seq_length 720 \
+    --patch_len 1 \
+    --num_channel 1 \
+    --binary true \
+    --rgb false \
+    --max_seq_length 360 \
     --mix_precision fp16 \
-    --half_coder false \
+    --half_coder true \
     --mp_workers 8 \
-    --prerendered false \
-    --is_continue_train true \
     --num_gpu_per_node $GPU_PER_NODE \
     --num_node $NUM_NODES  \

@@ -18,7 +18,7 @@ from ..utils import mask2img
 
 #for flash attention
 from transformers.utils import is_flash_attn_available
-if is_flash_attn_available() == False:
+if is_flash_attn_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
     from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
     from transformers.models.llama.modeling_llama import LlamaFlashAttention2
@@ -31,7 +31,7 @@ class LlamaDecoderLayer(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
-        if getattr(config, "flash", True) and is_flash_attn_available() == False:
+        if getattr(config, "flash", True) and is_flash_attn_available():
             logger.warning_once("flash attention enabled!")
         else:
             logger.warning_once("flash attention disabled!")

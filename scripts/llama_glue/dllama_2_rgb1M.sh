@@ -2,7 +2,7 @@
 #SBATCH --partition=gpu
 #SBATCH --nodes=4
 #SBATCH --gres=gpu:4
-#SBATCH --time=40:30:0
+#SBATCH --time=10:30:0
 #SBATCH --qos=gpu
 #SBATCH --exclusive
 
@@ -25,7 +25,7 @@ echo Head node IP: $head_node_ip
 
 export OMP_NUM_THREADS=20
 
-export BACKBONE_PATH='/work/sc118/sc118/yintaotai/msc_project/storage/shared/checkpoints/100kModels/dllama_2_rgb_100k/backbone'
+export BACKBONE_PATH='/work/sc118/sc118/yintaotai/msc_project/storage/shared/checkpoints/1MModels/1000000/backbone'
 export COMPRESSOR_PATH=''
 export COMPRESSOR_NAME=''
 export BATCH_SIZE=8
@@ -33,7 +33,7 @@ export MAX_NUM_PATCH=720
 export PATCH_LEN=2
 export WANDB__SERVICE_WAIT=300
 
-export EXP_NAME='dllama_2_rgb_1M_glue'
+export EXP_NAME='1M_dllama_2_rgb_glue'
 
 srun torchrun \
     --nnodes=$NUM_NODES \
@@ -114,8 +114,8 @@ srun torchrun \
     train.py --model LatentLlamaForSequenceClassification \
         --exp_type ${EXP_NAME}_stsb_ \
         --backbone_path $BACKBONE_PATH \
-        --optim AdamW --finetune_task glue --glue_task stsb --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.01 --total_steps 2000 --eval_freq 100 --save_freq 100 --warm_up_step 100 --best_save_freq 200 --seed 42 --batch_size 64 \
-        --sub_size 4 --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
+        --optim AdamW --finetune_task glue --glue_task stsb --lr 3e-5 --beta1 0.9 --beta2 0.95 --decay 0.01 --total_steps 2000 --eval_freq 100 --save_freq 100 --warm_up_step 100 --best_save_freq 200 --seed 42 --batch_size 32 \
+        --sub_size 2 --font_file PixeloidSans-mLxMm.ttf --dpi 80 --pixels_per_patch 8 \
         --patch_len $PATCH_LEN \
         --max_seq_length $MAX_NUM_PATCH --num_channel 3 --binary false --rgb true --mix_precision fp16 --half_coder true --mp_workers 8 \
         --num_gpu_per_node $GPU_PER_NODE \
