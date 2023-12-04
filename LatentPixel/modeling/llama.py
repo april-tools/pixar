@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
 from transformers import LlamaModel, LlamaConfig
-from transformers.models.llama.modeling_llama import LlamaAttention, LlamaFlashAttention2, LlamaMLP, LlamaRMSNorm, _make_causal_mask, _expand_mask, LlamaPreTrainedModel
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaMLP, LlamaRMSNorm, _make_causal_mask, _expand_mask, LlamaPreTrainedModel
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, SequenceClassifierOutputWithPast
 from transformers import logging
 from diffusers import AutoencoderKL
@@ -18,9 +18,10 @@ from ..utils import mask2img
 
 #for flash attention
 from transformers.utils import is_flash_attn_available
-if is_flash_attn_available():
+if is_flash_attn_available() == False:
     from flash_attn import flash_attn_func, flash_attn_varlen_func
     from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
+    from transformers.models.llama.modeling_llama import LlamaFlashAttention2
     
 
 logger = logging.get_logger(__name__)
@@ -30,7 +31,7 @@ class LlamaDecoderLayer(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
-        if getattr(config, "flash", True):
+        if getattr(config, "flash", True) and is_flash_attn_available() == False:
             logger.warning_once("flash attention enabled!")
         else:
             logger.warning_once("flash attention disabled!")
