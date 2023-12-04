@@ -120,7 +120,7 @@ class Discriminator(nn.Module):
         # Average the loss per patch
         return (lossfn(logits, target) * mask).sum() / mask.sum()
 
-    def forward(self, input: TGraph, target: int) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, input: TGraph, target: int) -> tuple[float, torch.Tensor]:
         """
         Target is 0 or 1, 1 means real, 0 means fake
         """
@@ -131,10 +131,21 @@ class Discriminator(nn.Module):
         hidden = self.blocks(inputs_embeds)
         logger.warning_once(f'Discriminator hidden vector shape {hidden.shape}')
 
-        logits = self.out_proj(hidden)
-        loss = self.forward_loss(logits, input.text_mask, target)
+        logits: torch.Tensor = self.out_proj(hidden)
+        mask = input.text_mask
+        loss = self.forward_loss(logits, mask, target)
+        
+        with torch.no_grad():
+            num = mask.sum().item()
+            preds = logits.argmax(-1) * mask
+            if target == 1:
+                acc = preds.sum().item() / num
+            elif target == 0:
+                acc = 1 - preds.sum().item() / num
+            else:
+                raise ValueError(f'Target of discriminator must be either 1 or 0, get [{target}] instead.')
 
-        return logits, loss
+        return acc, loss
     
     def save(self, folder: str | PathLike) -> None:
         self.config.save(folder)

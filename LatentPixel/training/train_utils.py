@@ -422,7 +422,7 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
 
     # init optimizer
     optim = get_optimizer(params, config)
-    disc_optim = get_optimizer(disc.parameters(), config) if disc is not None else None
+    disc_optim = get_optimizer(disc.parameters(), config, disc=True) if disc is not None else None
         
     if not isinstance(model, Compressor):
         model.backbone = wrap_model(model.backbone, config)
@@ -693,7 +693,7 @@ def get_LrScheduler(optimizer: Optimizer, conf: ExpConfig, is_gan: bool=False) -
     
     return scheduler
 
-def get_optimizer(params: torch.ParameterDict, config: ExpConfig) -> Optimizer:
+def get_optimizer(params: torch.ParameterDict, config: ExpConfig, disc: bool=False) -> Optimizer:
     '''
     Initialize the optimizer
     '''
@@ -702,7 +702,7 @@ def get_optimizer(params: torch.ParameterDict, config: ExpConfig) -> Optimizer:
             output('Init AdamW optimizer')
             optim = AdamW(
                 params=params,
-                lr=config.lr,
+                lr=config.lr if not disc else config.gan_lr,
                 betas=(config.beta1, config.beta2),
                 weight_decay=config.decay,
                 eps=1e-8
@@ -711,14 +711,14 @@ def get_optimizer(params: torch.ParameterDict, config: ExpConfig) -> Optimizer:
             output('Init SGD optimizer')
             optim = SGD(
                 params=params,
-                lr=config.lr,
+                lr=config.lr if not disc else config.gan_lr,
                 momentum=config.momentum
             )
         case 'adamr':
             output('Init AdamR optimizer')
             optim = AdamR(
                 params=params,
-                lr=config.lr,
+                lr=config.lr if not disc else config.gan_lr,
                 betas=(config.beta1, config.beta2),
                 weight_recovery=config.decay,
                 eps=1e-8

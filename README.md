@@ -43,6 +43,7 @@ pip install wandb==0.15.12 pytesseract==0.3.10 editdistance==0.6.2 scikit-image=
 pip install nltk==3.8.1 apache-beam==2.51.0
 pip install paddlepaddle==2.5.2 paddleocr==2.7.0.3
 pip install adamr
+pip install flash-attn --no-build-isolation # install FlashAttention https://github.com/Dao-AILab/flash-attention
 ```
 
 4. Setup the project

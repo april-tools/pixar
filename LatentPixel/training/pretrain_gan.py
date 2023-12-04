@@ -81,6 +81,12 @@ def init_exp(config: ExpConfig) -> tuple[LatentModel, callable, callable, dict, 
 
     return (model, train_loader_fn, dev_loader_fn, optim_parts, discriminator, disc_optim_parts)
 
+def last_layer_grad(model: DDP | LatentModel) -> float:
+    if isinstance(model.backbone, DDP):
+        return torch.clone(model.backbone.module.out_proj.weight.grad).detach()
+    else:
+        return torch.clone(model.backbone.out_proj.weight.grad).detach()
+
 @timeit
 def train(config: ExpConfig):
     model, train_loader_fn, dev_loader_fn, optim_parts, discriminator, disc_optim_parts = init_exp(config)
@@ -106,7 +112,7 @@ def train(config: ExpConfig):
     begin_step = config.current_step
     grad_ratio: float = -0.1
     while config.current_step <= config.gan_total_steps + begin_step:
-        output(f'Step: {config.current_step}')
+        output(f'################# Step: {config.current_step} #################')
         running_recon_loss: float = 0.0
         running_gan_loss: float = 0.0
         running_loss: float = 0.0
@@ -117,8 +123,10 @@ def train(config: ExpConfig):
         fakes: list[TGraph] = []
         reals: list[TGraph] = []
         
-        running_recon_grad: float = 0.0
-        running_gan_grad: float = 0.0
+        running_recon_grad: torch.Tensor = torch.tensor(0.0, requires_grad=False)
+        running_gan_grad: torch.Tensor = torch.tensor(0.0, requires_grad=False)
+        pre_grad: torch.Tensor = torch.tensor(0.0, requires_grad=False)
+        running_acc: float = 0.0
 
         output(f'Gan ratio {config.currnt_gan_ratio}')
         with ExitStack() as stack:
@@ -140,36 +148,32 @@ def train(config: ExpConfig):
                 pred = model(graph)
                 fakes.append(pred)  # collect the predictions for discriminator training
 
-                # The backbone try to maximum the probability of generate real images, so it's 1 here
+                # calculate reconstruction loss and the gradient at the ouput layer
                 recon_loss: torch.Tensor = pred.loss / config.num_grad_acc_step
                 backward(recon_loss, optim_parts, retain_graph=True)
-                if isinstance(model.backbone, DDP):
-                    recon_grad = model.backbone.module.out_proj.weight.grad.mean().item() - running_recon_grad
-                else:
-                    model: LatentModel
-                    recon_grad = model.backbone.out_proj.weight.grad.mean().item() - running_recon_grad
-                recon_grad = abs(recon_grad)
-                running_recon_grad += recon_grad
+                current_grad = last_layer_grad(model)
+                running_recon_grad = running_recon_grad + current_grad - pre_grad
+                pre_grad = current_grad
+
+                # The backbone try to maximum the probability of generate real images, so it's 1 here
                 if grad_ratio < 0:
                     gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step
-
                 else:
                     gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step * (grad_ratio * config.currnt_gan_ratio + 1e-8)
-                # loss: torch.Tensor = gan_loss * config.currnt_gan_ratio + (1 - config.currnt_gan_ratio) * recon_loss
                 
-                # calculate the gradients for the language backbone
+                # calculate the gradients for the language backbone from discriminator
                 backward(gan_loss, optim_parts)
+                current_grad = last_layer_grad(model)
                 if grad_ratio < 0:
-                    gan_grad = model.backbone.module.out_proj.weight.grad.mean().item() - running_recon_grad
+                    running_gan_grad = running_gan_grad + (current_grad - pre_grad)
                 else:
-                    gan_grad = (model.backbone.module.out_proj.weight.grad.mean().item() - running_recon_grad) / (grad_ratio * config.currnt_gan_ratio + 1e-8)
-                gan_grad = abs(gan_grad)
-                running_gan_grad += gan_grad
+                    running_gan_grad = running_gan_grad + (current_grad - pre_grad) / (grad_ratio * config.currnt_gan_ratio + 1e-8)
+                pre_grad = current_grad
                 
                 if grad_ratio < 0:
-                    running_loss += recon_loss
+                    running_loss += recon_loss.item()
                 else:
-                    running_loss += recon_loss + gan_loss * (grad_ratio * config.currnt_gan_ratio + 1e-8)
+                    running_loss += (recon_loss + gan_loss).item()
                 running_gan_loss += gan_loss.item()
                 running_recon_loss += recon_loss.item()
 
@@ -198,36 +202,28 @@ def train(config: ExpConfig):
             # The backbone try to maximum the probability of generate real images, so it's 1 here
             recon_loss: torch.Tensor = pred.loss / config.num_grad_acc_step
             backward(recon_loss, optim_parts, retain_graph=True)
-            if isinstance(model.backbone, DDP):
-                recon_grad = model.backbone.module.out_proj.weight.grad.mean().item() - running_recon_grad
-            else:
-                model: LatentModel
-                recon_grad = model.backbone.out_proj.weight.grad.mean().item() - running_recon_grad
-            recon_grad = abs(recon_grad)
-            running_recon_grad += recon_grad
+            current_grad = last_layer_grad(model)
+            running_recon_grad = running_recon_grad + current_grad - pre_grad
+            pre_grad = current_grad
+            
             if grad_ratio < 0:
                 gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step
-
             else:
-                gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step * (grad_ratio * config.currnt_gan_ratio + 1e-6)
-            # loss: torch.Tensor = gan_loss * config.currnt_gan_ratio + (1 - config.currnt_gan_ratio) * recon_loss
+                gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step * (grad_ratio * config.currnt_gan_ratio + 1e-8)
             
-            # calculate the gradients for the language backbone
+            # calculate the gradients for the language backbone from discriminator
             backward(gan_loss, optim_parts)
+            current_grad = last_layer_grad(model)
             if grad_ratio < 0:
-                gan_grad = model.backbone.module.out_proj.weight.grad.mean().item() - running_recon_grad
+                running_gan_grad = running_gan_grad + (current_grad - pre_grad)
             else:
-                gan_grad = (model.backbone.module.out_proj.weight.grad.mean().item() - running_recon_grad) / (grad_ratio * config.currnt_gan_ratio + 1e-6)
-            gan_grad = abs(gan_grad)
-            running_gan_grad += gan_grad
-            # loss: torch.Tensor = gan_loss * config.currnt_gan_ratio + (1 - config.currnt_gan_ratio) * recon_loss
+                running_gan_grad = running_gan_grad + (current_grad - pre_grad) / (grad_ratio * config.currnt_gan_ratio + 1e-8)
+            pre_grad = current_grad
             
-            # calculate the gradients for the language backbone
-
             if grad_ratio < 0:
-                running_loss += recon_loss
+                running_loss += recon_loss.item()
             else:
-                running_loss += recon_loss + gan_loss * (grad_ratio * config.currnt_gan_ratio + 1e-8)
+                running_loss += (recon_loss + gan_loss).item()
             running_gan_loss += gan_loss.item()
             running_recon_loss += recon_loss.item()
             
@@ -237,16 +233,18 @@ def train(config: ExpConfig):
         if grad_ratio < 0:
             optim_parts['optim'].zero_grad()    # do not update at the fisrt step
         step(config, optim_parts, model.backbone, update_progress_bar=False)
+                
+        running_recon_grad = distributed_average(running_recon_grad, config.device_id).abs().mean().item()
+        running_gan_grad = distributed_average(running_gan_grad, config.device_id).abs().mean().item()
         
-        
-        running_recon_grad = distributed_average(running_recon_grad, config.device_id)
-        running_gan_grad = distributed_average(running_gan_grad, config.device_id)
         grad_ratio = running_recon_grad / (running_gan_grad + 1e-8)
+        
         running_loss = distributed_average(running_loss, config.device_id)
         running_gan_loss = distributed_average(running_gan_loss, config.device_id)
         running_recon_loss = distributed_average(running_recon_loss, config.device_id)
+        grad_ratio = distributed_average(grad_ratio, config.device_id)
         
-        logger.debug(f'grad_ratio:{grad_ratio}')
+        logger.info(f'grad_ratio:{grad_ratio}')
         
         output(f'recon_grad_scale: {running_recon_grad}')
         log({'recon_grad_scale': running_recon_grad})
@@ -267,33 +265,41 @@ def train(config: ExpConfig):
         log({'Gan_loss': running_gan_loss})        
 
         # Train the discriminator
+        disc_optim_parts['optim'].zero_grad()
         with ExitStack() as stack:
             train_gacc_stack(stack, config, model.backbone)
-            disc_optim_parts['optim'].zero_grad()
 
             for real, fake in list(zip(reals, fakes))[:-1]:
-                loss_r = discriminator.forward(real.detach_(), 1)[1] / config.num_grad_acc_step / 2
+                acc_r, loss_r = discriminator.forward(real.detach_(), 1)
+                loss_r = loss_r / config.num_grad_acc_step / 2
+                acc_r = acc_r / config.num_grad_acc_step / 2
                 backward(loss_r, disc_optim_parts)
 
-                loss_f = discriminator.forward(fake.detach_(), 0)[1] / config.num_grad_acc_step / 2
+                acc_f, loss_f = discriminator.forward(fake.detach_(), 0)
+                loss_f = loss_f / config.num_grad_acc_step / 2
+                acc_f = acc_f / config.num_grad_acc_step / 2
                 backward(loss_f, disc_optim_parts)
 
 
                 running_disc_loss += loss_r.item() + loss_f.item()
-
+                running_acc += acc_f + acc_r
+        
         with ExitStack() as stack:
             train_gacc_stack(stack, config, model.backbone)
-            disc_optim_parts['optim'].zero_grad()
 
             for real, fake in list(zip(reals, fakes))[-1:]:
-                loss_r = discriminator.forward(real.detach_(), 1)[1] / config.num_grad_acc_step / 2
+                acc_r, loss_r = discriminator.forward(real.detach_(), 1)
+                loss_r = loss_r / config.num_grad_acc_step / 2
+                acc_r = acc_r / config.num_grad_acc_step / 2
                 backward(loss_r, disc_optim_parts)
 
-                loss_f = discriminator.forward(fake.detach_(), 0)[1] / config.num_grad_acc_step / 2
+                acc_f, loss_f = discriminator.forward(fake.detach_(), 0)
+                loss_f = loss_f / config.num_grad_acc_step / 2
+                acc_f = acc_f / config.num_grad_acc_step / 2
                 backward(loss_f, disc_optim_parts)
 
-
                 running_disc_loss += loss_r.item() + loss_f.item()
+                running_acc += acc_f + acc_r
 
             if (config.current_step % config.eval_freq == 0 or config.current_step == 1) and model.compressor is None and config.rank == 0:
                 print(f'Save image output at step {config.current_step}')
@@ -301,17 +307,14 @@ def train(config: ExpConfig):
                 results = fake.detach_()
                 results.set_device('cpu')
                 results.to_file(config.image_sample_path('output'))
-                results.to_file(config.image_sample_path('output_with_mask'))
-                # graph.set_device('cpu')
-                # interleave = TGraph.reconstruct(graph, results, True)
-                # interleave.to_file(config.image_sample_path('reconstruction'))
-
+                
         # Update the discriminator
         step(config, disc_optim_parts, discriminator)
         running_disc_loss = distributed_average(running_disc_loss, config.device_id)
         output(f'Discriminator_loss: {running_disc_loss}')
         log({'Discriminator_loss': running_disc_loss})
-
+        output(f'Discriminator_acc: {running_acc}')
+        log({'Discriminator_acc': running_acc})
         reals = []
         fakes = []
 

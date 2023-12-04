@@ -79,7 +79,8 @@ class ExpConfig:
     decay: float = 0.01
     momentum: float = 0.95
     clip: float = 1.0
-    gan_total_steps: int = 1000
+    gan_total_steps: int = 3000
+    gan_delay_steps: int = 100
     gan_ratio: float = 0.5
     gan_ratio_warm_up_steps: int = 100
     gan_lr: float = 1e-5
