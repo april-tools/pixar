@@ -37,7 +37,6 @@ def _one_image_paddleocr(img: Image) -> str:
         init_paddle()
     img = np.array(img)
     rec = PADDLE.ocr(img, cls=False)
-    print(rec)
     result = ''
     if rec[0] is None:
         return ''
