@@ -217,8 +217,6 @@ class TGraph:
             return None
         if self.device is not None:
             value = value.to(self.device)
-        # if self._binary:
-        #     return (value > BINARY_THRESHOLD).long()
         if self._half:
             value = value.half()
         else:
@@ -479,14 +477,24 @@ class TGraph:
             graph._value = graph._from_PIL(img)
         return graph
 
-    def _to_PIL(self, value: torch.Tensor, span: bool=False, span_ratio: float=1.2) -> Image:
+    def _to_PIL(self, value: torch.Tensor, span: bool=False, span_ratio: float=1.2, binary_method: str='threshold', threshold: float = BINARY_THRESHOLD) -> Image:
         if span:
             value = self._span(value, span_ratio)
         if self._binary:
+            match binary_method:
+                case 'threshold':
+                    value = value > threshold
+                case 'bernoulli':
+                    assert value.max() <= 1 and value.min() >= 0
+                    value = torch.bernoulli(value)
+                case 'gray_scale':
+                    ...
+                case _:
+                    raise KeyError(f"Not support {binary_method}, please use 'threshold', 'bernoulli', or 'gray_scale' instead.")
             return self._val2pil_binary(value.float())
         return self._val2pil(value.clamp(0, 1))
 
-    def to_PIL(self, square: bool=True, contour: float = 0, span: bool=False, span_ratio: float=1.2, sample_method: str='threshold', threshold: float=BINARY_THRESHOLD) -> Image | list[Image]:
+    def to_PIL(self, square: bool=True, contour: float = 0, span: bool=False, span_ratio: float=1.2, binary_method: str='threshold', threshold: float=BINARY_THRESHOLD) -> Image | list[Image]:
         value = self.value
         if contour > 0:
             if self._contoru is ...:
@@ -499,9 +507,9 @@ class TGraph:
             value = self._squarelize(value)
         
         if value.dim() == 3:
-            return self._to_PIL(value, span=span, span_ratio=span_ratio)
+            return self._to_PIL(value, span=span, span_ratio=span_ratio, binary_method=binary_method, threshold=threshold)
         
-        return [self._to_PIL(img, span=span, span_ratio=span_ratio) for img in value]
+        return [self._to_PIL(img, span=span, span_ratio=span_ratio, binary_method=binary_method, threshold=threshold) for img in value]
     
     def _gen_contour(self) -> torch.Tensor:
         contour = torch.zeros(self.patch_size, get_num_patches() * self.patch_size, dtype=torch.float)
@@ -591,31 +599,46 @@ class TGraph:
         image = PIL.Image.open(path, 'r')
         return cls.from_PIL(image)
     
-    def _to_file(self, path: str | PathLike, value: torch.Tensor) -> None:
-        img = self._to_PIL(value)
+    def _to_file(self, path: str | PathLike, value: torch.Tensor, binary_method: str='threshold', threshold:float=BINARY_THRESHOLD) -> None:
+        img = self._to_PIL(value, binary_method=binary_method, threshold=threshold)
         img.save(path, 'PNG')
 
-    def to_file(self, path: str | PathLike, square: bool=True) -> None:
+    def to_file(self, path: str | PathLike, square: bool=True, contour: float=0.0, binary_method: str='threshold', threshold:float=BINARY_THRESHOLD) -> None:
+        value = self.value
+        if contour > 0:
+            if self._contoru is ...:
+                self._contoru = self._gen_contour()
+            value = value.repeat([1, 3, 1, 1])
+            value = value.float() + self._contoru * contour
+            value[:, 1, :, :] += self._contoru * contour
+            
         if square:
-            value = self._squarelize(self.value)
+            value = self._squarelize(value)
         else:
             value = self.value
                     
         if value.dim() == 3:
-            return self._to_file(path, value)
+            return self._to_file(path, value, binary_method=binary_method, threshold=threshold)
         
         os.makedirs(path, exist_ok=True)
         for idx, val in enumerate(value):
             file_path = os.path.join(path, f'{idx}.png')
-            self._to_file(file_path, val)
+            self._to_file(file_path, val, binary_method=binary_method, threshold=threshold)
             
-    def binary(self) -> None:
+    def binary(self, method: str='threshold', threshold=BINARY_THRESHOLD) -> None:
         if self._value.dim() == 3:  # c, h, w
             val = self._value.mean(dim=0, keepdim=True)
         elif self._value.dim() == 4:    # bs, c, h, w
             val = self._value.mean(dim=1, keepdim=True)
         
-        self._value = (val > BINARY_THRESHOLD).long()
+        match method:
+            case 'threshold':
+                val = (val > threshold).long()
+            case 'bernoulli':
+                val = torch.bernoulli(val)
+            case _:
+                ...
+        self._value = val
 
     @classmethod
     def from_text(cls, text: str | list[str], **kwargs) -> TGraph:
@@ -726,7 +749,7 @@ class TGraph:
         Returns:
             str | list[str]: Recognized texts
         """
-        imgs = self.to_PIL(square=square, span=span, span_ratio=span_ratio, sample_method=sample_method, threshold=threshold)
+        imgs = self.to_PIL(square=square, span=span, span_ratio=span_ratio, binary_method=sample_method, threshold=threshold)
         return ocr(imgs, method=method, scale=scale)
 
     def half(self) -> TGraph:
@@ -774,4 +797,9 @@ class TGraph:
                 continue
             space = self.count_white_space(idx)
             self._shift_text(idx, space-space_len)
+        return self
+
+    def bernoulli(self) -> TGraph:
+        assert self._value.max() <= 1 and self._value.min() >= 0
+        self._value = torch.bernoulli(self._value)
         return self

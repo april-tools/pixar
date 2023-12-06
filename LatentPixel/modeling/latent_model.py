@@ -90,11 +90,14 @@ class LatentModel(nn.Module):
                 
         return msgs, ok
         
-    def forward(self, img: TGraph) -> TGraph:
+    def forward(self, img: TGraph, temperature: float=1.0) -> TGraph:
+        if img._binary and img._value.is_floating_point():
+            img.binary()
         if self.compressor is None:
             recon = self.latent_forward(img)
             recon._labels = img._labels
             if self.binary and self.num_labels is None:
+                recon._value /= temperature
                 recon._value.sigmoid_()
                 recon._binary = True
             return recon
@@ -110,6 +113,7 @@ class LatentModel(nn.Module):
             recon._labels = img._labels
 
             if self.binary and self.num_labels is None:
+                recon._value /= temperature
                 recon._value.sigmoid_()
                 recon._binary = True
 
@@ -205,23 +209,24 @@ class LatentModel(nn.Module):
             for param in self.compressor.parameters():
                 param.requires_grad = False
 
-    def _generate(self, prompt: TGraph) -> TGraph:
+    def _generate(self, prompt: TGraph, binary_method: str='threshold', threshold: float=0.5, temperature: float=1.0) -> TGraph:
         gen = TGraph.from_tgraph(prompt)
         gen._value = prompt.value
-        output = self.forward(prompt)
+        output = self.forward(prompt, temperature=temperature)
         for idx, num_text in enumerate(prompt.num_text_patches):
             bidx = (num_text - 2) * prompt.patch_len * prompt.patch_size            
             eidx = bidx + prompt.patch_len * prompt.patch_size
             patch = output._value[idx, :, :, bidx:eidx]
-            patch = (patch > 0.5).long()
             gen._value[idx, :, :, eidx:eidx + prompt.patch_len * prompt.patch_size] = patch
             gen._num_text_patches[idx] += 1
             gen._attention_mask = None
+        if gen._binary:
+            gen.binary(binary_method, threshold)
         return gen
                 
-    def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int) -> TGraph:
+    def autoregressive_generate(self, prompt: TGraph, gen_idx: int, num_new_patches: int, binary_method: str='threshold', threshold: float=0.5, temperature: float=1.0) -> TGraph:
         for _ in range(num_new_patches):
-            gen = self._generate(prompt)
+            gen = self._generate(prompt, binary_method, threshold, temperature=temperature)
             prompt = gen
         return gen
 
