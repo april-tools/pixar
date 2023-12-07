@@ -742,3 +742,8 @@ class LlamaDiscriminator(nn.Module):
         acc, loss = self.forward_loss(logits, attn_mask, target)
                 
         return acc, loss
+
+    def save(self, folder: str | PathLike) -> None:
+        self.config.save_pretrained(folder)
+        path = os.path.join(folder, 'llama_discriminator.bin')
+        torch.save(self.state_dict(), path)
