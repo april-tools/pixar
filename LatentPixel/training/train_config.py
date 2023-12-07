@@ -85,6 +85,7 @@ class ExpConfig:
     gan_ratio_warm_up_steps: int = 100
     gan_lr: float = 1e-5
     gan_lr_warm_up_steps: int = 100
+    num_gan_sample: int = 30
     mask_ratio: float = 0.25
     mask_type: str = 'span'
     total_steps: int = 4000 # number of parameter update steps

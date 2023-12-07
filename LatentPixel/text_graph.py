@@ -133,7 +133,7 @@ class TGraph:
             bidx = idx * self.patch_size * self.patch_len
             eidx = bidx + self.patch_len * self.patch_size
         
-        result._value = self.value[..., :, bidx:eidx]
+        result._value = self._value[..., :, bidx:eidx]
         result._patch_size = self._patch_size
         result._patch_len = self._patch_len
         return result

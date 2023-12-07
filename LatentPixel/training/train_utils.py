@@ -48,7 +48,8 @@ from ..modeling import (
     CNNAutoencoder,
     Compressor,
     LatentLlama,
-    LatentLlamaForSequenceClassification
+    LatentLlamaForSequenceClassification,
+    LlamaDiscriminator
 )
 from ..utils import timeit, init_render
 from ..text_graph import TGraph
@@ -411,12 +412,20 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
         params = model.parameters()
         
     # Load the discriminator from path
-    if config.discriminator_path is not None and len(config.discriminator_path) > 0:
-        disc_config = DiscriminatorConfig.load(config.discriminator_path)
-        disc_config.num_channel = config.num_channel
-        disc_config.patch_len = config.patch_len
-        disc_config.pixel_per_patch = config.pixels_per_patch
-        disc = Discriminator.load(folder=config.discriminator_path, config=disc_config)
+    if config.discriminator_path is not None:
+        if config.discriminator_path != 'self' and len(config.discriminator_path) > 0:
+            disc_config = DiscriminatorConfig.load(config.discriminator_path)
+            disc_config.num_channel = config.num_channel
+            disc_config.patch_len = config.patch_len
+            disc_config.pixel_per_patch = config.pixels_per_patch
+            disc = Discriminator.load(folder=config.discriminator_path, config=disc_config)
+        elif config.discriminator_path == 'self':
+            if isinstance(model, LatentLlama):
+                disc = LlamaDiscriminator(model.backbone)
+            else:
+                raise NotImplementedError(f'discriminator for {type(model)} has not been implemented')
+        else:
+            disc = None
     else:
         disc = None
 
@@ -457,122 +466,6 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
         'scaler': scaler
     }
     
-    disc_optim_parts = {
-        'optim': disc_optim,
-        'scheduler': disc_scheduler,
-        'scaler': disc_scaler
-    }
-
-    init_progress_bar(config)
-    init_render(config.render_config)
-
-    return model, optim_parts, disc, disc_optim_parts
-
-def prepare_gan(config: ExpConfig) -> tuple[LatentModel, dict, Discriminator, dict]:
-    # Select the correct model to load according to the config
-    match config.model:
-        case 'LPixelForMLM':
-            output(f'Latent image size: {config.latent_size}')
-            output(f'Latent patch size: {config.latent_patch_size}')
-            model = LPixelForMLM(
-                coder_path=config.coder_path,
-                backbone_path=config.backbone_path,
-                img_size=config.image_size,
-                latent_size=config.latent_size
-            )
-            if config.stage == 1:
-                model.init_connection_layers()
-                model.delete_unused_layers()
-            elif config.stage == 2:
-                model.delete_unused_layers()
-        case 'LatentGPT2':
-            output(f'Latent image size: {config.latent_size}')
-            output(f'Latent patch size: {config.latent_patch_size}')
-            output('init latent gpt2 model')
-            model = LatentGPT2(
-                coder_path=config.coder_path,
-                backbone_path=config.backbone_path,
-                img_size=config.image_size,
-                latent_size=config.latent_size
-            )
-            if config.stage == 1:
-                model.init_connection_layers()
-                model.delete_unused_layers()
-            elif config.stage == 2:
-                model.delete_unused_layers()
-        case _:
-            raise NotImplementedError(f'Unrecognizable model type {config.model}')
-        
-    # Load the discriminator from path
-    disc_config = DiscriminatorConfig.load(config.discriminator_path)
-    disc_config.num_channel = config.latent_size[0]
-    disc_config.patch_width = config.latent_size[1]
-    disc_config.patch_height = config.latent_size[1]
-    disc = Discriminator.load(folder=config.discriminator_path, config=disc_config)
-    
-    if config.latent_norm:
-        print('Enable the latent norm')
-        model.latent_norm = True
-    else:
-        print('Disable the latent norm')
-        model.latent_norm = False
-        
-    model.set_grad_for_stage(config.stage)
-    
-    if config.gradient_checkpointing:
-        output('Enable gradient checkpointing')
-        model.backbone.gradient_checkpointing_enable()
-
-    if config.half_coder and model.coder is not None:
-        output('Half the coder')
-        model.coder.half()
-        if not config.on_cpu:
-            model.coder.to(config.device_id)
-
-
-    if config.stage == 1:
-        output('Load connection parameters for the optimizer.')
-        params = model.get_connection_params()
-    elif config.stage == 2:
-        output('Load backbone parameters for the optimizer.')
-        params = model.get_backbone_parameters()
-    else:
-        raise KeyError(f'Unsupport pretraining stage {config.stage}')
-
-    # init optimizers
-    optim = get_optimizer(params, config)
-    disc_optim = get_optimizer(disc.parameters(), config)
-
-    model.backbone = wrap_model(model.backbone, config)
-    disc = wrap_model(disc, config)
-
-    # init scheduler
-    if config.scheduler.lower() == 'cosineannealinglr':
-        scheduler = CosineAnnealingLR(
-            optimizer=optim,
-            T_max=config.total_steps,
-            eta_min=0.1 * config.lr # from llama paper
-        )
-        disc_scheduler = CosineAnnealingLR(
-            optimizer=disc_optim,
-            T_max=config.total_steps,
-            eta_min=0.1 * config.lr # from llama paper
-        )
-    else:
-        raise KeyError(f'Invalid scheduler type {config.scheduler}')
-    
-    # init the scheduler for mixedprecision training
-    scaler = None
-    if config.mix_precision == 'fp16':
-        print('init the gradscaler for mixed-precision training')
-        scaler = ShardedGradScaler()    # This works for both DDP and FSDP
-        disc_scaler = ShardedGradScaler()
-
-    optim_parts = {
-        'optim': optim,
-        'scheduler': scheduler,
-        'scaler': scaler
-    }
     disc_optim_parts = {
         'optim': disc_optim,
         'scheduler': disc_scheduler,
