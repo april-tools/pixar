@@ -1,4 +1,4 @@
-export NUM_GPU_PER_NODE=4
+export NUM_GPU_PER_NODE=2
 export NUM_NODES=1
 
 # export OMP_NUM_THREADS=64
@@ -15,7 +15,7 @@ torchrun    \
     --model 'LatentLlama' \
     --exp_type 'gan_debug' \
     --backbone_path /home/s1891075/msc_project/storage/checkpoints/pretrain/lpixel_pretrain/LatentLlama/20231202-215356/900000/backbone \
-    --dataset_path storage/booksAndWiki2 \
+    --dataset_path storage/BooksAndWiki2 \
     --discriminator_path self \
     --shuffle_dataset false \
     --optim 'AdamW' \
@@ -35,7 +35,7 @@ torchrun    \
     --gan_ratio_warm_up_steps 1000 \
     --seed 42 \
     --batch_size 128 \
-    --sub_size 16 \
+    --sub_size 64 \
     --dpi 80 \
     --font_size 8 \
     --font_file PixeloidSans-mLxMm.ttf \
@@ -63,7 +63,7 @@ torchrun    \
     --model 'LatentLlama' \
     --exp_type 'gan_debug' \
     --backbone_path /home/s1891075/msc_project/storage/checkpoints/pretrain/lpixel_pretrain/LatentLlama/20231202-215356/900000/backbone \
-    --dataset_path storage/booksAndWiki2 \
+    --dataset_path storage/BooksAndWiki2 \
     --discriminator_path self \
     --shuffle_dataset false \
     --optim 'AdamW' \
@@ -112,7 +112,7 @@ torchrun    \
     --model 'LatentLlama' \
     --exp_type 'gan_debug' \
     --backbone_path /home/s1891075/msc_project/storage/checkpoints/pretrain/lpixel_pretrain/LatentLlama/20231202-215356/900000/backbone \
-    --dataset_path storage/booksAndWiki2 \
+    --dataset_path storage/BooksAndWiki2 \
     --discriminator_path self \
     --shuffle_dataset false \
     --optim 'AdamW' \
@@ -132,7 +132,7 @@ torchrun    \
     --gan_ratio_warm_up_steps 1000 \
     --seed 42 \
     --batch_size 128 \
-    --sub_size 64 \
+    --sub_size 16 \
     --dpi 80 \
     --font_size 8 \
     --font_file PixeloidSans-mLxMm.ttf \
