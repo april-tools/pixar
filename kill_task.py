@@ -6,5 +6,5 @@ out, err = process.communicate()
 lines = out.decode().splitlines()
 
 for l in lines:
-    if 'torch' in l:
+    if 'torch' in l or 'python' in l:
         os.system(f'kill -9 {l.split()[1]}')
