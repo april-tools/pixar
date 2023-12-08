@@ -11,7 +11,7 @@ torchrun    \
     train.py \
     --task 'gan_pretrain' \
     --model 'LatentLlama' \
-    --exp_type 'gan_debug' \
+    --exp_type 'full_gan' \
     --backbone_path /home/s1891075/msc_project/storage/checkpoints/pretrain/lpixel_pretrain/LatentLlama/20231202-215356/900000/backbone \
     --dataset_path storage/BooksAndWiki2 \
     --discriminator_path self \
@@ -59,7 +59,7 @@ torchrun    \
     train.py \
     --task 'gan_pretrain' \
     --model 'LatentLlama' \
-    --exp_type 'gan_debug' \
+    --exp_type 'full_gan' \
     --backbone_path /home/s1891075/msc_project/storage/checkpoints/pretrain/lpixel_pretrain/LatentLlama/20231202-215356/900000/backbone \
     --dataset_path storage/BooksAndWiki2 \
     --discriminator_path self \
