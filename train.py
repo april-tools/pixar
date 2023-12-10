@@ -4,6 +4,11 @@ from LatentPixel.training.pretrain_gan import train as train_gan
 from LatentPixel.training.train_autoencoder import train as train_autoencoder
 from LatentPixel.training.train_utils import init_dist_environ
 import os
+import logging
+
+loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
+for logger in loggers:
+    logger.setLevel(logging.ERROR)
 
 if __name__ == '__main__':
     os.system("taskset -p 0xffffffffffffffffffffff %d" % os.getpid())
