@@ -16,6 +16,7 @@ from ..metrics import Metric
 from .preprocess import preprocess_pretrain_data
 from tqdm import tqdm
 import numpy as np
+from nltk import sent_tokenize
 
 from datasets import load_dataset, interleave_datasets, load_from_disk
 from datasets.distributed import split_dataset_by_node
@@ -180,6 +181,21 @@ def get_pretrain_dataloader(
     mask_ratio: float = 0.25,
     mask_type: str = 'rand'
 ) -> DataLoader:
+    if data_conf.dataset_paths[0] == 'c4':
+        print("Using C4 dataset!")
+        return get_c4_dataloader(
+            data_conf=data_conf,
+            render_conf=render_conf,
+            cache_path=cache_path,
+            batch_size=batch_size,
+            n_skip=n_skip,
+            num_workers=num_workers,
+            rank=rank,
+            world_size=world_size,
+            mask_ratio=mask_ratio,
+            mask_type=mask_type
+        )
+        
     if len(data_conf.dataset_paths) > 1:
         # Check whether this dataset is cached
         cache_folder = os.path.join(cache_path, data_conf.signature())
@@ -369,3 +385,82 @@ def get_glue_dataset(
 
     
     return train_loader, val_loaders, metrics, num_labels
+
+def render_batched_c4(batch: list[dict[str, str]]) -> torch.Tensor:
+    sents = []
+    for sent in batch:
+        sents.append(sent['text'])
+    img = TGraph.from_text(sents)
+    img.attention_mask
+
+    return img
+
+def _sent_split(sent: str, max_len: int, min_len: int) -> list[str]:
+    sents = sent_tokenize(sent)
+    
+    samples = []
+    
+    sample = []
+    num = 0
+    for sent in sents:
+        l = len(sent)
+        nnum = num + l
+        if nnum >= max_len:
+            if num >= min_len:
+                samples.append(' '.join(sample))
+            sample = [sent]
+            num = l
+        else:
+            sample.append(sent)
+            num = nnum
+            
+    if len(sample) > 0:
+        sent = ' '.join(sample)
+        if len(sent) > min_len:
+            samples.append(' '.join(sample))
+        
+    return samples
+
+def sent_split(batch: list[str], max_len: int, min_len: int) -> list[str]:
+    batch = batch['text']
+    samples = []
+    for sent in batch:
+        samples.extend(_sent_split(sent, max_len, min_len))
+    return {'text': samples}
+
+def get_c4_dataloader(
+    data_conf: PretrainDatasetConfig,
+    render_conf: RenderConfig,
+    cache_path: str | os.PathLike,
+    batch_size: int,
+    n_skip: int,
+    num_workers: int,
+    rank: int,
+    world_size: int,
+    mask_ratio: float = 0.25,
+    mask_type: str = 'rand'
+) -> DataLoader:
+    TGraph.init_render(**asdict(render_conf))
+    c4 = load_dataset('c4', 'en', split='train', streaming=True)
+    if data_conf.shuffle:
+        c4 = c4.shuffle(seed=data_conf.seed)
+    c4 = split_dataset_by_node(c4, rank, world_size)
+    c4 = c4.map(
+        partial(sent_split, max_len=data_conf.max_len, min_len=data_conf.min_len),
+        batch_size=2,
+        drop_last_batch=False,
+        batched=True,
+        remove_columns=[name for name in c4.column_names if name != 'text'],
+    )
+
+    loader = DataLoader(
+        c4, 
+        batch_size=batch_size, 
+        collate_fn=render_batched_c4, 
+        drop_last=False, 
+        pin_memory=True, 
+        num_workers=num_workers, 
+        prefetch_factor=32 if num_workers > 0 else None
+    )
+    
+    return loader

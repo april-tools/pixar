@@ -360,4 +360,4 @@ def params2dict(params: dict) -> dict:
         params[k] = str2bool(v)
     return params
 
-atexit.register(_clean_up)
+# atexit.register(_clean_up)

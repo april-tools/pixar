@@ -379,6 +379,7 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
                 binary=config.binary
             )
             model.delete_unused_layers()
+
         case 'CNNAutoencoder':
             output('Initializing the CNNAutoencoder')
             output(f'Pathch length:{config.patch_len}')
@@ -386,6 +387,11 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
             output(str(model.config))
         case _:
             raise NotImplementedError(f'Unrecognizable model type {config.model}')
+        
+    num_param = 0
+    for param in model.parameters():
+        num_param += param.numel()
+    print(f'{num_param} parameters in the model!')
     
     if not isinstance(model, Compressor):
         model: LatentModel
