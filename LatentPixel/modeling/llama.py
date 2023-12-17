@@ -10,6 +10,8 @@ from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttenti
 from transformers import logging
 from diffusers import AutoencoderKL
 from torch.nn.parallel import DistributedDataParallel
+from copy import deepcopy
+import random
 
 from LatentPixel.text_graph import TGraph
 
@@ -175,6 +177,7 @@ class LlamaForPatchCausalInference(LlamaModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        ignore_out_proj: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
         # map the input_embeds into vectors saperated by patches
         inputs_embeds = self.in_proj(inputs_embeds)
@@ -292,8 +295,11 @@ class LlamaForPatchCausalInference(LlamaModel):
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         # <<< before are copied from Llama
-        hidden_states = hidden_states.transpose(1, 2).unsqueeze(2)
-        hidden_states = self.out_proj(hidden_states)
+        if not ignore_out_proj:
+            hidden_states = hidden_states.transpose(1, 2).unsqueeze(2)
+            hidden_states = self.out_proj(hidden_states)
+        else:
+            hidden_states = None
 
         return BaseModelOutputWithPastAndCrossAttentions(
             last_hidden_state=hidden_states,
@@ -578,7 +584,8 @@ class LlamaForPatchSequenceClassification(LlamaModel):
 
         return BaseModelOutputWithPastAndCrossAttentions(
             last_hidden_state=logits, 
-            hidden_states=hidden_states
+            hidden_states=hidden_states,
+            past_key_values=next_cache
         )
 
 
@@ -656,3 +663,87 @@ class LatentLlamaForSequenceClassification(LatentModel):
             del self.compressor.decoder
             self.compressor.decoder = None
         return
+
+def cache_at(cache: tuple, idx: int) -> tuple | None:
+    idx += 1    # shift the index
+    target = []
+    for c1, c2 in cache:
+        target.append((c1[:, :, :idx, :], c2[:, :, :idx, :]))
+    return tuple(target)
+
+class LlamaDiscriminator(nn.Module):
+    
+    def __init__(self, backbone: LlamaForPatchCausalInference) -> None:
+        super().__init__()
+        self.llama = deepcopy(backbone)
+        config = self.llama.config
+        del self.llama.out_proj
+        
+        self.head = nn.Linear(config.hidden_size, 2)
+        self.config = config
+        
+    def forward_loss(self, logits: torch.Tensor, mask: torch.Tensor, target: int) -> tuple[float, torch.Tensor]:
+        """
+        logits: [n_batch, n_patch, 2]
+        mask:   [n_batch, n_patch]
+        target: 1 or 0
+        return acc and loss
+        """
+        lossfn = nn.CrossEntropyLoss(reduction='none')
+
+        logits = logits.flatten(0, 1)
+        mask = mask.flatten()
+        target = torch.ones_like(mask, dtype=torch.long) * target
+        preds = logits.argmax(-1)
+                
+        # Average the loss per patch
+        loss = (lossfn(logits, target) * mask).sum() / (mask.sum() + 1e-8)
+        
+        # calculate acc
+        acc = ((preds == target) * mask).sum() / (mask.sum() + 1e-8)
+        
+        return acc, loss
+        
+    def forward(self, real: TGraph, gen: TGraph, target: int, num_samples: int, only_real: bool=False) -> tuple[float, torch.Tensor]:
+        """
+        Target is 0 or 1, 1 means real, 0 means fake
+        """
+        # calculate the kv cache
+        real_images = real.value * 2.0 - 1
+        if real_images.device != self.llama.in_proj.weight.device:
+            real_images = real_images.to(device=self.llama.in_proj.weight.device)
+        attn_mask = real.attention_mask
+        
+        # only one pass when input is real
+        if target == 1 and only_real:
+            out = self.llama.forward(inputs_embeds=real_images, output_hidden_states=True, ignore_out_proj=True)
+            logits = self.head.forward(out.hidden_states[-1])
+            acc, loss = self.forward_loss(logits, attn_mask, 1)
+            return acc, loss
+        
+        cache = self.llama.forward(inputs_embeds=real_images, attention_mask=attn_mask, ignore_out_proj=True).past_key_values
+        
+        num_patches = real._value.shape[-1] // real.patch_width
+        ids = random.sample(range(num_patches), num_samples)
+        attn_mask = attn_mask[:, ids]
+        
+        # calculate logits each fake patch
+        seq = []
+        for idx in ids:
+            patch: torch.Tensor = gen[idx]._value * 2 - 1
+            if patch.device != self.llama.in_proj.weight.device:
+                patch = patch.float().to(self.llama.in_proj.weight.device)
+            kvs = cache_at(cache, idx)
+            out = self.llama.forward(inputs_embeds=patch, past_key_values=kvs, output_hidden_states=True, use_cache=True, ignore_out_proj=True)
+            logits = out.hidden_states[-1]
+            seq.append(logits)
+        
+        logits = self.head.forward(torch.cat(seq, dim=1).contiguous())
+        acc, loss = self.forward_loss(logits, attn_mask, target)
+                
+        return acc, loss
+
+    def save(self, folder: str | PathLike) -> None:
+        self.config.save_pretrained(folder)
+        path = os.path.join(folder, 'llama_discriminator.bin')
+        torch.save(self.state_dict(), path)

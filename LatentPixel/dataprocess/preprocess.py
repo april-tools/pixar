@@ -9,7 +9,7 @@ def set_cpu_aff():
     global CPU_AFF_SETTED
     if CPU_AFF_SETTED:
         return
-    os.system("taskset -p 0xffffffffff %d" % os.getpid())
+    os.system("taskset -p 0xffffffffffffffff %d" % os.getpid())
     CPU_AFF_SETTED = True
 
 def collate_text(batch: dict, max_len: int | None = None, min_len: int | None = None) -> list[str]:

@@ -15,7 +15,7 @@ torchrun    \
     --exp_type 'gan_pretrain' \
     --backbone_path /home/tai/src/projects/msc_project/storage/llama_2_backbone \
     --dataset_path storage/booksAndWiki2 \
-    --discriminator_path /home/tai/src/projects/msc_project/storage/discriminator/l2b \
+    --discriminator_path self \
     --shuffle_dataset false \
     --optim 'AdamW' \
     --lr 1e-4 \
@@ -34,7 +34,7 @@ torchrun    \
     --gan_ratio_warm_up_steps 1000 \
     --seed 42 \
     --batch_size 128 \
-    --sub_size 32 \
+    --sub_size 4 \
     --dpi 80 \
     --font_size 8 \
     --font_file PixeloidSans-mLxMm.ttf \

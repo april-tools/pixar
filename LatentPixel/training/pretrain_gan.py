@@ -25,7 +25,8 @@ from ..modeling import (
     LatentModel,
     LPixelForMLM,
     LatentGPT2,
-    Discriminator
+    Discriminator,
+    LlamaDiscriminator
 )
 from ..config import (
     ModelType
@@ -156,11 +157,18 @@ def train(config: ExpConfig):
                 pre_grad = current_grad
 
                 # The backbone try to maximum the probability of generate real images, so it's 1 here
-                if grad_ratio < 0:
-                    gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step
+                if config.discriminator_path == 'self':
+                    discriminator: LlamaDiscriminator
+                    if grad_ratio < 0:
+                        gan_loss: torch.Tensor = discriminator.forward(graph, pred, 1, config.num_gan_sample)[1] / config.num_grad_acc_step
+                    else:
+                        gan_loss: torch.Tensor = discriminator.forward(graph, pred, 1, config.num_gan_sample)[1] / config.num_grad_acc_step * (grad_ratio * config.currnt_gan_ratio + 1e-8)
                 else:
-                    gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step * (grad_ratio * config.currnt_gan_ratio + 1e-8)
-                
+                    if grad_ratio < 0:
+                        gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step
+                    else:
+                        gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step * (grad_ratio * config.currnt_gan_ratio + 1e-8)
+                    
                 # calculate the gradients for the language backbone from discriminator
                 backward(gan_loss, optim_parts)
                 current_grad = last_layer_grad(model)
@@ -206,10 +214,18 @@ def train(config: ExpConfig):
             running_recon_grad = running_recon_grad + current_grad - pre_grad
             pre_grad = current_grad
             
-            if grad_ratio < 0:
-                gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step
+            if config.discriminator_path == 'self':
+                discriminator: LlamaDiscriminator
+                if grad_ratio < 0:
+                    gan_loss: torch.Tensor = discriminator.forward(graph, pred, 1, config.num_gan_sample)[1] / config.num_grad_acc_step
+                else:
+                    gan_loss: torch.Tensor = discriminator.forward(graph, pred, 1, config.num_gan_sample)[1] / config.num_grad_acc_step * (grad_ratio * config.currnt_gan_ratio + 1e-8)
             else:
-                gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step * (grad_ratio * config.currnt_gan_ratio + 1e-8)
+                if grad_ratio < 0:
+                    gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step
+                else:
+                    gan_loss: torch.Tensor = discriminator.forward(pred, 1)[1] / config.num_grad_acc_step * (grad_ratio * config.currnt_gan_ratio + 1e-8)
+                
             
             # calculate the gradients for the language backbone from discriminator
             backward(gan_loss, optim_parts)
@@ -270,12 +286,18 @@ def train(config: ExpConfig):
             train_gacc_stack(stack, config, model.backbone)
 
             for real, fake in list(zip(reals, fakes))[:-1]:
-                acc_r, loss_r = discriminator.forward(real.detach_(), 1)
+                if config.discriminator_path == 'self':
+                    acc_r, loss_r = discriminator.forward(real.detach_(), real.detach_(), 1, config.num_gan_sample, True)
+                else:
+                    acc_r, loss_r = discriminator.forward(real.detach_(), 1)
                 loss_r = loss_r / config.num_grad_acc_step / 2
                 acc_r = acc_r / config.num_grad_acc_step / 2
                 backward(loss_r, disc_optim_parts)
 
-                acc_f, loss_f = discriminator.forward(fake.detach_(), 0)
+                if config.discriminator_path == 'self':
+                    acc_f, loss_f = discriminator.forward(real.detach_(), fake.detach_(), 0, config.num_gan_sample)
+                else:
+                    acc_f, loss_f = discriminator.forward(fake.detach_(), 0)
                 loss_f = loss_f / config.num_grad_acc_step / 2
                 acc_f = acc_f / config.num_grad_acc_step / 2
                 backward(loss_f, disc_optim_parts)
@@ -288,12 +310,18 @@ def train(config: ExpConfig):
             train_gacc_stack(stack, config, model.backbone)
 
             for real, fake in list(zip(reals, fakes))[-1:]:
-                acc_r, loss_r = discriminator.forward(real.detach_(), 1)
+                if config.discriminator_path == 'self':
+                    acc_r, loss_r = discriminator.forward(real.detach_(), real.detach_(), 1, config.num_gan_sample, True)
+                else:
+                    acc_r, loss_r = discriminator.forward(real.detach_(), 1)
                 loss_r = loss_r / config.num_grad_acc_step / 2
                 acc_r = acc_r / config.num_grad_acc_step / 2
                 backward(loss_r, disc_optim_parts)
 
-                acc_f, loss_f = discriminator.forward(fake.detach_(), 0)
+                if config.discriminator_path == 'self':
+                    acc_f, loss_f = discriminator.forward(real.detach_(), fake.detach_(), 0, config.num_gan_sample)
+                else:
+                    acc_f, loss_f = discriminator.forward(fake.detach_(), 0)
                 loss_f = loss_f / config.num_grad_acc_step / 2
                 acc_f = acc_f / config.num_grad_acc_step / 2
                 backward(loss_f, disc_optim_parts)
