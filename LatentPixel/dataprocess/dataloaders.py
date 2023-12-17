@@ -291,7 +291,7 @@ def get_pixel_pretrain_dataloader(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        prefetch_factor=4 if num_workers > 0 else None,
+        prefetch_factor=16 if num_workers > 0 else None,
         collate_fn=partial(render_batched_text, mask_ratio=mask_ratio, mask_type=mask_type),
         worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
         drop_last=True
