@@ -118,7 +118,7 @@ def collate_text(batch: dict, max_len: int | None = None) -> list[str]:
 
     return {'text': samples}
 
-def collate_glue(batch: dict) -> TGraph:
+def collate_glue(batch: dict, detoken: bool) -> TGraph:
     merged = defaultdict(list)
     for sample in batch:
         for k, v in sample.items():
@@ -134,12 +134,54 @@ def collate_glue(batch: dict) -> TGraph:
     else:
         raise ValueError(f'GLUE dataset should be 3 or 4 fields, but got {len(batch)} fields')
     
+    if detoken:
+        detokned = []
+        for sample in text:
+            if isinstance(sample, str):
+                detokned.append(detokenize(sample))
+            elif isinstance(sample, tuple):
+                detokned.append((detokenize(sample[0]), detokenize(sample[1])))
+            else:
+                raise ValueError(f'GLUE sentence in wrong format!')
+        text = detokned
+    
     tgraph = TGraph.from_text(text)
     tgraph._labels = torch.tensor(label)
     assert isinstance(tgraph._labels, torch.LongTensor) or isinstance(tgraph._labels, torch.DoubleTensor) or isinstance(tgraph._labels, torch.FloatTensor)
     tgraph.attention_mask   # init the attention mask
     
     return tgraph
+
+def detokenize(sent: str) -> str:
+    sent = sent.replace("''", '"').replace("' '", '"')
+    words = sent.split(' ')
+    in_quota = False
+    sent = ''
+    idx = 0
+    no_space = False
+    while idx < len(words):
+        w = words[idx]
+        if w in (',', '.', "'", ';', '%', ')', '>', '?', "'m", "'s", '”', ':') or w[0] == "'":
+            sent += w
+        elif w == '"':
+            if in_quota:
+                in_quota = False
+                sent += w
+            else:
+                in_quota = True
+                no_space = True
+                sent += ' ' + w
+        elif w in ('$', '<', '“', '('):
+            sent += ' ' + w
+            no_space = True
+        else:
+            if no_space:
+                sent += w
+                no_space = False
+            else:
+                sent += ' ' + w
+        idx += 1  
+    return sent.strip()
 
 def get_fake_dataloader(
     data_conf: PretrainDatasetConfig,
@@ -336,6 +378,7 @@ def get_glue_dataset(
     
     metrics = dict(GLUE_META)[task][0]
     num_labels = dict(GLUE_META)[task][1]
+    detoken = False
     
     print(f'Begin to load data for <{task}> task at rank {rank}')
     train_data = load_dataset('glue', task, split='train')
@@ -344,6 +387,9 @@ def get_glue_dataset(
         val_datas = [load_dataset('glue', 'mnli', split='validation_matched'), load_dataset('glue', 'mnli', split='validation_mismatched')]
     else:
         val_datas = [load_dataset('glue', task, split='validation')]
+        
+    if task in ('mrpc', 'sst2'):
+        detoken = True
         
     print(f'Validation dataset for {task} loaded')
     print(f'{len(val_datas)} validation sets in total')
@@ -360,7 +406,7 @@ def get_glue_dataset(
         shuffle=True,
         num_workers=mp_workers,
         prefetch_factor=32,
-        collate_fn=collate_glue,
+        collate_fn=partial(collate_glue, detoken=detoken),
         worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
         drop_last=False
     )
@@ -374,7 +420,7 @@ def get_glue_dataset(
             shuffle=True,
             num_workers=mp_workers,
             prefetch_factor=32,
-            collate_fn=collate_glue,
+            collate_fn=partial(collate_glue, detoken=detoken),
             worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
             drop_last=False
         ) for data in val_datas
