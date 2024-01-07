@@ -121,6 +121,21 @@ class LlamaForPatchCausalInference(LlamaModel):
 
         # Initialize weights and apply final processing
         self.post_init()
+        
+    def set_trainable_layers(self, num: int):
+        for param in self.parameters():
+            param.requires_grad = False
+        print(f'Only allow the last {num} layers in generator be trainable')
+        for layer in self.layers[-num:]:
+            layer: LlamaDecoderLayer
+            for param in layer.parameters():
+                param.requires_grad = True
+        
+        for param in self.norm.parameters():
+            param.requires_grad = True
+            
+        for param in self.out_proj.parameters():
+            param.requires_grad = True
 
     def init_projection(self) -> None:
         config = self.config
@@ -681,6 +696,18 @@ class LlamaDiscriminator(nn.Module):
         
         self.head = nn.Linear(config.hidden_size, 2)
         self.config = config
+        
+    def set_trainable_layers(self, num: int):
+        for param in self.llama.parameters():
+            param.requires_grad = False
+        print(f'Only allow the last {num} layers in discriminator be trainable')
+        for layer in self.llama.layers[-num:]:
+            layer: LlamaDecoderLayer
+            for param in layer.parameters():
+                param.requires_grad = True
+        
+        for param in self.llama.norm.parameters():
+            param.requires_grad = True
         
     def forward_loss(self, logits: torch.Tensor, mask: torch.Tensor, target: int) -> tuple[float, torch.Tensor]:
         """

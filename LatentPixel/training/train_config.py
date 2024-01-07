@@ -85,6 +85,9 @@ class ExpConfig:
     gan_ratio_warm_up_steps: int = 100
     gan_lr: float = 1e-5
     gan_lr_warm_up_steps: int = 100
+    disc_hot_layers: int = 2
+    gen_hot_layers: int = 4
+    full_gan: bool = True
     num_gan_sample: int = 30
     mask_ratio: float = 0.25
     mask_type: str = 'span'

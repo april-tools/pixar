@@ -379,6 +379,9 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
                 binary=config.binary
             )
             model.delete_unused_layers()
+            if config.discriminator_path is not None:
+                if not config.full_gan:
+                    model.backbone.set_trainable_layers(config.gen_hot_layers)
 
         case 'CNNAutoencoder':
             output('Initializing the CNNAutoencoder')
@@ -428,6 +431,8 @@ def prepare_model(config: ExpConfig) -> tuple[LatentModel | Compressor, dict]:
         elif config.discriminator_path == 'self':
             if isinstance(model, LatentLlama):
                 disc = LlamaDiscriminator(model.backbone)
+                if not config.full_gan:
+                    disc.set_trainable_layers(config.disc_hot_layers)
             else:
                 raise NotImplementedError(f'discriminator for {type(model)} has not been implemented')
         else:
