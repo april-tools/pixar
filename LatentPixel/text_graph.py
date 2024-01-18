@@ -491,11 +491,11 @@ class TGraph:
                     ...
                 case _:
                     raise KeyError(f"Not support {binary_method}, please use 'threshold', 'bernoulli', or 'gray_scale' instead.")
-            return self._val2pil_binary(value.float())
+            return self._val2pil_binary(value.float().clamp(0, 1))
         return self._val2pil(value.clamp(0, 1))
 
     def to_PIL(self, square: bool=True, contour: float = 0, span: bool=False, span_ratio: float=1.2, binary_method: str='threshold', threshold: float=BINARY_THRESHOLD) -> Image | list[Image]:
-        value = self.value
+        value = self._value
         if contour > 0:
             if self._contoru is ...:
                 self._contoru = self._gen_contour()
