@@ -88,8 +88,6 @@ def evaluate(model: LatentModel, loaders: list[DataLoader], config: ExpConfig, m
                     for met in running_metrics:
                         met.accumulate(golden=golds_filtered, compare=preds_filtered)
 
-                    print('Metric accumulated on rank 0')
-
             if wait_others:
                 # Other processes have 1 more evaluation batch, we need to create 1 more fake batch with padding values
                 padding_gold = torch.ones(config.sub_size, dtype=gold.dtype, device=gold.device) * -9528
@@ -110,14 +108,12 @@ def evaluate(model: LatentModel, loaders: list[DataLoader], config: ExpConfig, m
                     preds = preds.tolist()
                     assert len(golds) == len(preds)
 
-                    print('Filter the padding values')
                     golds_filtered = [g for g in golds if float(g) != -9528.0]
                     preds_filtered = [p for p in preds if float(p) != -9528.0]
                     
                     for met in running_metrics:
                         met.accumulate(golden=golds_filtered, compare=preds_filtered)
 
-                    print('Metric accumulated on rank 0')
             
             if config.rank == 0:
                 for met in running_metrics:

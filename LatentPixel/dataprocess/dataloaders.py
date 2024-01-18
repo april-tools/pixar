@@ -49,11 +49,9 @@ class SkipDataset(Dataset):
 
 def dataloader_init_fn(worker_id, seed: int, render_config: RenderConfig) -> None:
     seed_everyting(seed)
-    os.system("taskset -p 0xfffffffffffffffffff %d" % os.getpid())
-    print(f'initialize the render with parameters {render_config.to_dict()}')
+    os.system("taskset -p 0xfffffffffffffffffff %d > /dev/null" % os.getpid())
     render_params = render_config.to_dict()
     TGraph.init_render(**render_params)
-    print(f'patch_len initialized as {TGraph._patch_len}')
 
 def render_batched_text(batch: list[dict[str, str]], mask_ratio: float, mask_type: str) -> torch.Tensor:
     sents = []
@@ -380,25 +378,19 @@ def get_glue_dataset(
     num_labels = dict(GLUE_META)[task][1]
     detoken = False
     
-    print(f'Begin to load data for <{task}> task at rank {rank}')
     train_data = load_dataset('glue', task, split='train')
-    print(f'Train dataset for {task} loaded')
     if task == 'mnli':
         val_datas = [load_dataset('glue', 'mnli', split='validation_matched'), load_dataset('glue', 'mnli', split='validation_mismatched')]
     else:
         val_datas = [load_dataset('glue', task, split='validation')]
         
-    if task in ('mrpc', 'sst2'):
+    if task in ('mrpc',):
         detoken = True
         
-    print(f'Validation dataset for {task} loaded')
-    print(f'{len(val_datas)} validation sets in total')
 
     train_data = split_dataset_by_node(train_data, rank=rank, world_size=world_size)
-    print(f'Train dataset splitted')
 
     val_datas = [split_dataset_by_node(data, rank=rank, world_size=world_size) for data in val_datas]
-    print(f'Validation dataset splitted')
     
     train_loader = DataLoader(
         dataset=train_data,
@@ -410,7 +402,6 @@ def get_glue_dataset(
         worker_init_fn=partial(dataloader_init_fn, seed=seed, render_config=render_config),
         drop_last=False
     )
-    print(f'Train dataloader prepared')
 
     
     val_loaders = [
@@ -425,9 +416,6 @@ def get_glue_dataset(
             drop_last=False
         ) for data in val_datas
     ]
-    print(f'Validation dataloaders prepared')
-    print(f'{len(metrics)} metrics will be used')
-    print([met().metric_name() for met in metrics])
 
     
     return train_loader, val_loaders, metrics, num_labels
