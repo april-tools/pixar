@@ -15,7 +15,8 @@ from .utils import (
     init_timestamp,
     timestamp,
     params2dict,
-    timeit
+    timeit,
+    confuse
 )
 from .config import (
     ModelType,
@@ -73,4 +74,5 @@ __all__ = [
     'BIN_FONT'
     'LatentLlamaForSequenceClassification'
     'DEFAULT_BINARY_RENDERING'
+    'confuse'
 ]

@@ -18,6 +18,7 @@ from pixel import PangoCairoTextRenderer
 from pixel import Encoding
 from pixel import SpanMaskingGenerator
 
+from .CONFUSABLES import CONFUSABLES
 from .config import RenderConfig
 
 render: PangoCairoTextRenderer = None
@@ -360,4 +361,20 @@ def params2dict(params: dict) -> dict:
         params[k] = str2bool(v)
     return params
 
-# atexit.register(_clean_up)
+def __confuse(text: str, ratio: float) -> str:
+    result = ""
+    for c in text:
+        if c in CONFUSABLES:
+            num = random.random()
+            if num < ratio:
+                result += random.choice(CONFUSABLES[c])
+            else:
+                result += c
+        else:
+            result += c
+    return result
+
+def confuse(text: str |  list[str], ratio: float) -> str | list[str]:
+    if isinstance(text, str):
+        return __confuse(text, ratio)
+    return [__confuse(t, ratio) for t in text]
