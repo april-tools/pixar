@@ -9,6 +9,8 @@ import random
 import time
 import math
 import argparse
+import re
+import subprocess
 
 import torch
 import torch.multiprocessing as mp
@@ -378,3 +380,43 @@ def confuse(text: str |  list[str], ratio: float) -> str | list[str]:
     if isinstance(text, str):
         return __confuse(text, ratio)
     return [__confuse(t, ratio) for t in text]
+
+def gen_babi(task_id: int, num: int, prompt: str, after_prompt: str) -> tuple[str, str]:
+    pat = re.compile("(^[0-9]*) ([^\t]*)(?:\t(.*)\t)*")
+
+    raw = subprocess.run(['babi-tasks', f'{task_id}', f'{num}'], stdout=subprocess.PIPE).stdout.decode()
+    lines = list(map(lambda x: x.groups(), map(pat.match, raw.splitlines())))
+    # return lines
+    results = []
+    cur_sample = []
+    for line in lines:
+        if line[0] == '1':
+            results.append(cur_sample) if len(cur_sample) > 0 else ...
+            cur_sample = []
+        cur_sample.append(line[1])
+        if line[2] is not None:
+            cur_sample.append(prompt)
+            cur_sample.append(line[2] + after_prompt)
+    results.append(cur_sample)
+    data = []
+    for sample in results:
+        prompt = ' '.join(sample[:-1])
+        target = sample[-1]
+        data.append((prompt, target))
+    return data
+
+def process_lambda(raw: str) -> str:
+    raw = raw.replace('`` ', '"').replace(" ''", '"').replace('``', '"').replace("''", '"')
+    result = ''
+    for idx in range(len(raw) - 1):
+        c = raw[idx]
+        cn = raw[idx + 1]
+        if cn in ',.?><{}()\'' and c == ' ':
+            continue
+        if (raw[idx+1:idx+4] == "n't" or raw[idx+1:idx+4] == "'re" or raw[idx+1:idx+3] == "'d" or raw[idx+1:idx+3] == "'s" or raw[idx+1:idx+3] == "'m") and raw[idx] == ' ':
+            continue
+        if raw[idx+1] == "'" and raw[idx+2] in 'abcdefghijklmnopqrstuvwxyz' and raw[idx] == ' ':
+            continue
+        result += raw[idx]
+    result += raw[-1]
+    return result
