@@ -1,3 +1,9 @@
 [submodule "pixel"]
 	path = pixel
 	url = git@github.com:TYTTYTTYT/pixel.git
+[submodule "distro"]
+	path = distro
+	url = git@github.com:TYTTYTTYT/distro.git
+[submodule "bAbI-tasks"]
+	path = bAbI-tasks
+	url = git@github.com:TYTTYTTYT/bAbI-tasks.git

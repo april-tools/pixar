@@ -44,6 +44,8 @@ pip install nltk==3.8.1 apache-beam==2.51.0
 pip install paddlepaddle==2.5.2 paddleocr==2.7.0.3
 pip install adamr
 pip install flash-attn --no-build-isolation # install FlashAttention https://github.com/Dao-AILab/flash-attention
+pip install ipywidgets
+sudo apt install tesseract-ocr # if you cannot use sudo, please refer to https://tesseract-ocr.github.io/tessdoc/Installation.html
 ```
 
 4. Setup the project
@@ -54,6 +56,12 @@ Please make sure you have access to the UOE GitLab first.
 cd ~/
 git clone --recurse-submodules git@git.ecdf.ed.ac.uk:s1891075/msc_project.git
 pip install -e pixel
+cd distro
+./install.sh
+source ~/.bashrc
+cd ../bAbI-tasks
+luarocks make babitasks-scm-1.rockspec
+cd ..
 mkdir -p /exports/eddie/scratch/{UUN}/pixelplus
 ln -s /exports/eddie/scratch/{UUN}/pixelplus storage
 ```
