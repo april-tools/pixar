@@ -76,9 +76,30 @@ bash scripts/gan_pretrain/full_GAN1.sh
 
 ## 3. Download the pretrained checkpoint
 
-You can download the checkpoint trained with 1M steps of stage1 pretraining and 200 steps of stage 2 training through this link.
+You can download the checkpoint trained with 1M steps of stage1 pretraining and 200 steps of stage 2 training through this link: 
+
+https://drive.google.com/file/d/1uFr78VttIfOOqYxyCcsoc7ewsQvU_BVf/view?usp=sharing
 
 
-Here are some generation samples from this checkpoint:
+Here are some generation samples from this checkpoint: 
+
 https://drive.google.com/drive/folders/1vHmF0UHGKAzhtOUtP55_m6VrfVQIHc4K?usp=drive_link
+
+## 4. Run the downstream tasks
+
+1. GLUE
+
+```
+bash scripts/llama_glue/dllama_2b1M.sh
+```
+
+2. bAbI
+
+You can use babi.ipynb to evalueate the performance on the bAbI benchmark.
+
+
+3. LAMBADA
+
+You can use lambada.ipynb to evalueate the performance on the bAbI benchmark.
+
 
