@@ -76,12 +76,12 @@ bash scripts/gan_pretrain/full_GAN1.sh
 
 ## 3. Download the pretrained checkpoint
 
-You can download the checkpoint trained with 1M steps of stage1 pretraining and 200 steps of stage 2 training through this link: 
+Here is the model checkpoint used to test the Lambda and bAbI performance in the paper. It was trained with 1M stage 1 and 200 stage 2 steps.
 
-https://drive.google.com/file/d/1uFr78VttIfOOqYxyCcsoc7ewsQvU_BVf/view?usp=sharing
+[https://drive.google.com/file/d/1uFr78VttIfOOqYxyCcsoc7ewsQvU_BVf/view?usp=sharing
+](https://drive.google.com/file/d/1ngfKBmCL_nEa2om9ifJHOaf4SDKQ-eMP/view?usp=drive_link)
 
-
-Here are some generation samples from this checkpoint: 
+Here are some samples generated from it: 
 
 https://drive.google.com/drive/folders/1vHmF0UHGKAzhtOUtP55_m6VrfVQIHc4K?usp=drive_link
 
